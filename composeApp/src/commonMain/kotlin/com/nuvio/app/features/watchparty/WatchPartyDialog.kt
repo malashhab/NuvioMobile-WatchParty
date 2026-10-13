@@ -2,6 +2,8 @@ package com.nuvio.app.features.watchparty
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -9,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -19,22 +23,7 @@ import com.nuvio.app.core.ui.DialogSurface
 import com.nuvio.app.core.ui.NuvioInputField
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
-import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.watch_party_close
-import nuvio.composeapp.generated.resources.watch_party_code_placeholder
-import nuvio.composeapp.generated.resources.watch_party_connect_failed
-import nuvio.composeapp.generated.resources.watch_party_create
-import nuvio.composeapp.generated.resources.watch_party_guest_hint
-import nuvio.composeapp.generated.resources.watch_party_guest_message
-import nuvio.composeapp.generated.resources.watch_party_host_message
-import nuvio.composeapp.generated.resources.watch_party_intro
-import nuvio.composeapp.generated.resources.watch_party_invalid_code
-import nuvio.composeapp.generated.resources.watch_party_join
-import nuvio.composeapp.generated.resources.watch_party_leave
-import nuvio.composeapp.generated.resources.watch_party_status_connected
-import nuvio.composeapp.generated.resources.watch_party_status_connecting
-import nuvio.composeapp.generated.resources.watch_party_status_reconnecting
-import nuvio.composeapp.generated.resources.watch_party_title
+import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -101,7 +90,7 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
     Column(verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s8)) {
         Text(
             text = stringResource(
-                if (status.isHost) Res.string.watch_party_host_message else Res.string.watch_party_guest_message,
+                if (status.isOwner) Res.string.watch_party_host_message else Res.string.watch_party_guest_message,
             ),
             color = tokens.colors.textSecondary,
             style = MaterialTheme.typography.bodyMedium,
@@ -131,14 +120,16 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        if (!status.isHost) {
-            Text(
-                text = stringResource(Res.string.watch_party_guest_hint),
-                color = tokens.colors.textSecondary,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
+
+    status.pendingRequests.forEach { member ->
+        ControlRequestRow(member)
+    }
+
+    MemberList(status)
+
+    ControlSection(status)
+
     DialogButtons {
         DialogButton(
             text = stringResource(Res.string.watch_party_leave),
@@ -146,5 +137,127 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
             style = DialogButtonStyle.Destructive,
         )
         DialogButton(text = stringResource(Res.string.watch_party_close), onClick = onDismiss)
+    }
+}
+
+@Composable
+private fun ControlRequestRow(member: WatchPartyMember) {
+    val tokens = MaterialTheme.nuvio
+    Column {
+        Text(
+            text = stringResource(Res.string.watch_party_request_from, member.name),
+            color = tokens.colors.textPrimary,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_deny),
+                onClick = { WatchPartyRoomController.denyControl(member.memberId) },
+            )
+            DialogButton(
+                text = stringResource(Res.string.watch_party_allow),
+                onClick = { WatchPartyRoomController.grantControl(member.memberId) },
+                style = DialogButtonStyle.Primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberList(status: WatchPartyStatus) {
+    if (status.members.isEmpty()) return
+    val tokens = MaterialTheme.nuvio
+    val ownerLabel = stringResource(Res.string.watch_party_owner)
+    val controllingLabel = stringResource(Res.string.watch_party_controlling)
+
+    Column(verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s4)) {
+        Text(
+            text = stringResource(Res.string.watch_party_members),
+            color = tokens.colors.textSecondary,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        status.members.forEach { member ->
+            val tags = listOfNotNull(
+                ownerLabel.takeIf { member.memberId == status.ownerMemberId },
+                controllingLabel.takeIf { member.memberId == status.controllerId },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (member.memberId == status.localMemberId) {
+                        stringResource(Res.string.watch_party_member_you, member.name)
+                    } else {
+                        member.name
+                    },
+                    color = tokens.colors.textPrimary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (tags.isNotEmpty()) {
+                    Text(
+                        text = tags.joinToString(" · "),
+                        color = tokens.colors.textMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlSection(status: WatchPartyStatus) {
+    val tokens = MaterialTheme.nuvio
+    val controllerName = status.nameOf(status.controllerId) ?: stringResource(Res.string.watch_party_default_controller)
+
+    Text(
+        text = if (status.isController) {
+            stringResource(Res.string.watch_party_you_control)
+        } else {
+            stringResource(Res.string.watch_party_controlled_by, controllerName)
+        },
+        color = tokens.colors.textSecondary,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (!status.isController) {
+        when (status.requestState) {
+            ControlRequestState.Waiting -> Text(
+                text = stringResource(Res.string.watch_party_request_waiting),
+                color = tokens.colors.textMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            ControlRequestState.Denied -> Text(
+                text = stringResource(Res.string.watch_party_request_denied),
+                color = tokens.colors.danger,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            ControlRequestState.None -> Unit
+        }
+    }
+
+    when {
+        status.isOwner && !status.isController -> DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_take_back),
+                onClick = WatchPartyRoomController::takeBackControl,
+                style = DialogButtonStyle.Primary,
+            )
+        }
+        !status.isOwner && status.isController -> DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_give_back),
+                onClick = WatchPartyRoomController::returnControl,
+            )
+        }
+        !status.isOwner -> DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_ask_control),
+                onClick = WatchPartyRoomController::requestControl,
+                style = DialogButtonStyle.Primary,
+                enabled = status.requestState != ControlRequestState.Waiting,
+            )
+        }
     }
 }

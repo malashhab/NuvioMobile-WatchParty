@@ -153,6 +153,7 @@ internal fun PlayerScreenRuntime.showVolumeFeedback(level: PlayerAudioLevel) {
 }
 
 internal fun PlayerScreenRuntime.togglePlayback() {
+    if (blockWatchPartyFollowerAction()) return
     if (playbackSnapshot.isPlaying) {
         shouldPlay = false
         playerController?.pause()

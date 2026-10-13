@@ -577,7 +577,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         if (current != null && controller != null &&
             playerControllerSourceUrl == activeSourceUrl &&
             playerSettingsUiState.skipIntroEnabled && playbackSnapshot.isPlaying &&
-            !isScrubbingTimeline && initialSeekApplied && !isWatchPartyGuest &&
+            !isScrubbingTimeline && initialSeekApplied && !isWatchPartyFollower &&
             current.shouldAutoSkip(playerSettingsUiState.autoSkipSegmentTypes) &&
             current !in autoSkippedIntervals
         ) {
@@ -694,7 +694,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         if (shouldShow && !showNextEpisodeCard) {
             showNextEpisodeCard = true
             if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true &&
-                !isWatchPartyGuest
+                !isWatchPartyFollower
             ) {
                 playNextEpisode(automatic = true)
             }

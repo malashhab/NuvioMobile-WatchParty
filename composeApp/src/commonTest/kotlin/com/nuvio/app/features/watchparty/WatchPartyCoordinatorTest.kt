@@ -6,9 +6,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class WatchPartyCoordinatorTest {
-    private val room = WatchPartyRoom(code = "ABCD2345", hostMemberId = "host")
     private val hub = InMemoryWatchPartyHub()
     private var now = 0L
+    private var controller = "host"
 
     private val hostPlayer = FakeWatchPartyPlayer(content = episodeOne, isPlaying = true, positionMs = 60_000L)
     private val guestPlayer = FakeWatchPartyPlayer(content = episodeOne, isPlaying = false, positionMs = 0L)
@@ -24,11 +24,11 @@ class WatchPartyCoordinatorTest {
         player: WatchPartyPlayerPort,
         epoch: String = "$memberId-epoch",
     ) = WatchPartyCoordinator(
-        room = room,
         localMemberId = memberId,
         transport = transport,
         player = player,
         nowMs = { now },
+        controllerId = { controller },
         epoch = epoch,
     )
 
@@ -239,6 +239,80 @@ class WatchPartyCoordinatorTest {
         host.onLocalPlaybackChanged()
 
         assertTrue(guestPlayer.actions.isEmpty())
-        assertFalse(guest.isHost)
+        assertFalse(guest.isController)
+    }
+
+    @Test
+    fun slowSeekingFollowerDoesNotChaseAndAimsAheadNextTime() {
+        host.start()
+        guest.start()
+        assertEquals(listOf("seek:60000", "play"), guestPlayer.actions)
+
+        // The guest's source needs 3 seconds to resume after that seek.
+        guestPlayer.isReady = false
+        guest.onLocalPlaybackChanged()
+        now = 3_000L
+        guestPlayer.isReady = true
+        guest.onLocalPlaybackChanged()
+
+        // Three seconds behind, but seeking again right away would just repeat the wait.
+        assertEquals(listOf("seek:60000", "play"), guestPlayer.actions)
+
+        // After the cooldown, the next heartbeat corrects once, aiming 3 seconds ahead.
+        now = 7_000L
+        hostPlayer.positionMs = 67_000L
+        guestPlayer.positionMs = 64_000L
+        host.onHeartbeat()
+
+        assertEquals(listOf("seek:60000", "play", "seek:70000"), guestPlayer.actions)
+    }
+
+    @Test
+    fun deliberateControllerSeekIsAppliedEvenDuringCooldown() {
+        host.start()
+        guest.start()
+        guestPlayer.actions.clear()
+
+        now = 2_000L
+        hostPlayer.positionMs = 200_000L
+        host.onLocalPlaybackChanged()
+
+        assertEquals(listOf("seek:200000"), guestPlayer.actions)
+    }
+
+    @Test
+    fun guestGivenControlDrivesTheHost() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.actions.clear()
+
+        controller = "guest"
+        host.onControllerChanged()
+        guest.onControllerChanged()
+
+        now = 5_000L
+        guestPlayer.positionMs = 300_000L
+        guestPlayer.isPlaying = false
+        guest.onLocalPlaybackChanged()
+
+        assertEquals(listOf("seek:300000", "pause"), hostPlayer.actions)
+        assertTrue(guestPlayer.actions.isEmpty())
+    }
+
+    @Test
+    fun formerControllerIsIgnoredAfterControlMoves() {
+        host.start()
+        guest.start()
+        controller = "guest"
+        host.onControllerChanged()
+        guest.onControllerChanged()
+        hostPlayer.actions.clear()
+        guestPlayer.actions.clear()
+
+        // A late message from the old controller must not move anyone.
+        hostConnection.send(hostState(seq = 99, isPlaying = false, positionMs = 1_000L, epoch = "host-epoch"))
+
+        assertTrue(guestPlayer.actions.isEmpty())
     }
 }

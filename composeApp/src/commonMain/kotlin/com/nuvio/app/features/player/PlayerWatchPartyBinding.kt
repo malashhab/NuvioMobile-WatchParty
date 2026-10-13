@@ -4,8 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.watchparty.WatchPartyConnection
 import com.nuvio.app.features.watchparty.WatchPartyContent
 import com.nuvio.app.features.watchparty.WatchPartyCoordinator
@@ -18,6 +21,10 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.watch_party_default_controller
+import nuvio.composeapp.generated.resources.watch_party_follower_hint
+import org.jetbrains.compose.resources.getString
 
 private const val WATCH_PARTY_HEARTBEAT_MS = 5_000L
 
@@ -30,8 +37,9 @@ internal class PlayerWatchPartyState(
     var seekReportJob: Job? = null
 }
 
-internal val PlayerScreenRuntime.isWatchPartyGuest: Boolean
-    get() = watchParty?.coordinator?.isHost == false
+/** In a party but not in control: playback follows the controller. */
+internal val PlayerScreenRuntime.isWatchPartyFollower: Boolean
+    get() = watchParty?.coordinator?.isController == false
 
 /** Null hides the toolbar button, e.g. in builds without a Watch Party server configured. */
 internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? =
@@ -41,8 +49,17 @@ internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? =
         null
     }
 
+/** Followers can't play or pause; tell them who can, and how to ask. Returns true when blocked. */
+internal fun PlayerScreenRuntime.blockWatchPartyFollowerAction(): Boolean {
+    if (!isWatchPartyFollower) return false
+    showWatchPartyFollowerHint()
+    return true
+}
+
 internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
     val party = watchParty ?: return
+    // A follower's seek is undone by the next sync; explain why.
+    if (isWatchPartyFollower) showWatchPartyFollowerHint()
     party.seekReportJob?.cancel()
     party.seekReportJob = scope.launch {
         delay(WATCH_PARTY_SEEK_REPORT_DELAY_MS)
@@ -50,12 +67,28 @@ internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
     }
 }
 
+private fun PlayerScreenRuntime.showWatchPartyFollowerHint() {
+    val status = WatchPartyRoomController.status.value
+    scope.launch {
+        val controllerName = status.nameOf(status.controllerId) ?: getString(Res.string.watch_party_default_controller)
+        NuvioToastController.show(getString(Res.string.watch_party_follower_hint, controllerName))
+    }
+}
+
 @Composable
 internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     val activeParty by WatchPartySessionRepository.active.collectAsStateWithLifecycle()
+    val pendingRequestCount = WatchPartyRoomController.status.collectAsStateWithLifecycle().value.pendingRequests.size
 
     if (showWatchPartyDialog) {
         WatchPartyDialog(onDismiss = { showWatchPartyDialog = false })
+    }
+
+    // Open the panel when someone asks for control, so the owner can answer right away.
+    var lastPendingRequestCount by remember { mutableStateOf(0) }
+    LaunchedEffect(pendingRequestCount) {
+        if (pendingRequestCount > lastPendingRequestCount) showWatchPartyDialog = true
+        lastPendingRequestCount = pendingRequestCount
     }
 
     DisposableEffect(activeParty) {
@@ -63,11 +96,11 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
             val startMark = TimeSource.Monotonic.markNow()
             PlayerWatchPartyState(
                 WatchPartyCoordinator(
-                    room = party.room,
                     localMemberId = party.localMemberId,
                     transport = party.transport,
                     player = PlayerWatchPartyPort(this@BindWatchPartyEffects),
                     nowMs = { startMark.elapsedNow().inWholeMilliseconds },
+                    controllerId = { party.control.controllerId.value },
                 ),
             )
         }
@@ -81,13 +114,17 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     }
 
     val coordinator = watchParty?.coordinator ?: return
-    val connection = activeParty?.connection ?: return
+    val party = activeParty ?: return
 
     // The connection drops and comes back on its own; catch up each time it does.
-    LaunchedEffect(coordinator, connection) {
-        connection.collect { state ->
+    LaunchedEffect(coordinator, party) {
+        party.connection.collect { state ->
             if (state == WatchPartyConnection.Connected) coordinator.onReconnected()
         }
+    }
+
+    LaunchedEffect(coordinator, party) {
+        party.control.controllerId.collect { coordinator.onControllerChanged() }
     }
 
     LaunchedEffect(

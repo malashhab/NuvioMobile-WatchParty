@@ -15,6 +15,14 @@ private const val BROADCAST_EVENT = "watch_party"
 
 private val wireJson = Json { ignoreUnknownKeys = true }
 
+/** Lenient on purpose: the server may add its own fields to member entries. */
+internal fun decodeWatchPartyMember(state: JsonObject): WatchPartyMember? =
+    try {
+        wireJson.decodeFromJsonElement(WatchPartyMember.serializer(), state)
+    } catch (e: Exception) {
+        null
+    }
+
 /**
  * Sends room messages as Supabase Realtime broadcasts. Broadcasts are relayed live and never
  * stored, so the project needs no database tables.

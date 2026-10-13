@@ -9,6 +9,7 @@ data class ActiveWatchParty(
     val localMemberId: String,
     val transport: WatchPartyTransport,
     val connection: StateFlow<WatchPartyConnection>,
+    val control: WatchPartyControl,
 )
 
 /** The party this device is in, if any. The player syncs only while this is set. */
