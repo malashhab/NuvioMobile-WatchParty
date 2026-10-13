@@ -2459,4 +2459,19 @@
     <string name="stream_info_subtitle_source_embedded">Embedded</string>
     <string name="stream_info_player_engine">Player Engine</string>
     <string name="stream_info_server">Server</string>
+    <string name="watch_party_title">Watch Party</string>
+    <string name="watch_party_intro">Watch together in sync. Everyone plays from their own sources.</string>
+    <string name="watch_party_create">Create room</string>
+    <string name="watch_party_join">Join</string>
+    <string name="watch_party_code_placeholder">Room code</string>
+    <string name="watch_party_invalid_code">Enter the 8-character room code.</string>
+    <string name="watch_party_host_message">You are the host. Share this code:</string>
+    <string name="watch_party_guest_message">You joined room</string>
+    <string name="watch_party_guest_hint">The host controls playback.</string>
+    <string name="watch_party_status_connecting">Connecting…</string>
+    <string name="watch_party_status_connected">Connected</string>
+    <string name="watch_party_status_reconnecting">Reconnecting…</string>
+    <string name="watch_party_connect_failed">Could not reach the room server. Still trying…</string>
+    <string name="watch_party_leave">Leave</string>
+    <string name="watch_party_close">Close</string>
 </resources>

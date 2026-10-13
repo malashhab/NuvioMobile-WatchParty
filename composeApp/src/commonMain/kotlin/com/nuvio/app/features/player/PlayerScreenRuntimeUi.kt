@@ -304,6 +304,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 flushWatchProgress()
                 args.onBack()
             },
+            onWatchPartyClick = watchPartyClickHandler(),
             onTogglePlayback = { togglePlayback() },
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
@@ -60,9 +61,17 @@ internal fun PlayerToolbar(
     onLockToggle: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onWatchPartyClick: (() -> Unit)? = null,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
+        onWatchPartyClick?.let {
+            PlayerAction(
+                description = stringResource(Res.string.watch_party_title),
+                icon = Icons.Rounded.Groups,
+                onClick = it,
+            )
+        }
         PlayerAction(
             description = stringResource(
                 if (isLocked) Res.string.compose_player_unlock_controls else Res.string.compose_player_lock_controls,

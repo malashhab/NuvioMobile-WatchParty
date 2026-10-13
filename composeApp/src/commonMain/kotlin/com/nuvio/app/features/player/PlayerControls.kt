@@ -113,6 +113,7 @@ internal fun PlayerControlsShell(
     onSubmitIntroClick: (() -> Unit)? = null,
     onSwitchEngineClick: (() -> Unit)? = null,
     onStreamInfoClick: () -> Unit = {},
+    onWatchPartyClick: (() -> Unit)? = null,
     parentalWarnings: List<ParentalWarning> = emptyList(),
     showParentalGuide: Boolean = false,
     onParentalGuideAnimationComplete: () -> Unit = {},
@@ -199,6 +200,7 @@ internal fun PlayerControlsShell(
                         isLocked = isLocked,
                         onLockToggle = onLockToggle,
                         onBack = onBack,
+                        onWatchPartyClick = onWatchPartyClick,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Top))

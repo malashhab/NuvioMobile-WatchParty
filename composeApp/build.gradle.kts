@@ -109,6 +109,20 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
             )
         }
 
+        outDir.resolve("com/nuvio/app/features/watchparty").apply {
+            mkdirs()
+            resolve("WatchPartyConfig.kt").writeText(
+                """
+                |package com.nuvio.app.features.watchparty
+                |
+                |object WatchPartyConfig {
+                |    const val SUPABASE_URL = "${props.getProperty("WATCH_PARTY_SUPABASE_URL", "")}"
+                |    const val SUPABASE_KEY = "${props.getProperty("WATCH_PARTY_SUPABASE_KEY", "")}"
+                |}
+                """.trimMargin()
+            )
+        }
+
         outDir.resolve("com/nuvio/app/features/simkl").apply {
             mkdirs()
             resolve("SimklConfig.kt").writeText(
@@ -521,6 +535,7 @@ kotlin {
             implementation(libs.supabase.auth)
             implementation(libs.supabase.functions)
             implementation(libs.supabase.storage)
+            implementation(libs.supabase.realtime)
             implementation(libs.reorderable)
         }
         commonTest.dependencies {

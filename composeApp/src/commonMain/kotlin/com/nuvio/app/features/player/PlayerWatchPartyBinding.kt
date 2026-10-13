@@ -4,11 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.watchparty.WatchPartyConnection
 import com.nuvio.app.features.watchparty.WatchPartyContent
 import com.nuvio.app.features.watchparty.WatchPartyCoordinator
+import com.nuvio.app.features.watchparty.WatchPartyDialog
 import com.nuvio.app.features.watchparty.WatchPartyPlayback
 import com.nuvio.app.features.watchparty.WatchPartyPlayerPort
+import com.nuvio.app.features.watchparty.WatchPartyRoomController
 import com.nuvio.app.features.watchparty.WatchPartySessionRepository
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Job
@@ -29,6 +33,14 @@ internal class PlayerWatchPartyState(
 internal val PlayerScreenRuntime.isWatchPartyGuest: Boolean
     get() = watchParty?.coordinator?.isHost == false
 
+/** Null hides the toolbar button, e.g. in builds without a Watch Party server configured. */
+internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? =
+    if (WatchPartyRoomController.isConfigured) {
+        { showWatchPartyDialog = true }
+    } else {
+        null
+    }
+
 internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
     val party = watchParty ?: return
     party.seekReportJob?.cancel()
@@ -41,6 +53,10 @@ internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
 @Composable
 internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     val activeParty by WatchPartySessionRepository.active.collectAsStateWithLifecycle()
+
+    if (showWatchPartyDialog) {
+        WatchPartyDialog(onDismiss = { showWatchPartyDialog = false })
+    }
 
     DisposableEffect(activeParty) {
         val session = activeParty?.let { party ->
@@ -65,6 +81,14 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     }
 
     val coordinator = watchParty?.coordinator ?: return
+    val connection = activeParty?.connection ?: return
+
+    // The connection drops and comes back on its own; catch up each time it does.
+    LaunchedEffect(coordinator, connection) {
+        connection.collect { state ->
+            if (state == WatchPartyConnection.Connected) coordinator.onReconnected()
+        }
+    }
 
     LaunchedEffect(
         coordinator,
