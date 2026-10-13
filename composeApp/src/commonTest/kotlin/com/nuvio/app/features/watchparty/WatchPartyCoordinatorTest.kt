@@ -312,6 +312,7 @@ class WatchPartyCoordinatorTest {
         guestPlayer.actions.clear()
 
         now = 10_000L
+        guestPlayer.positionMs = 70_000L
         guest.onTick()
         assertTrue(guestEvents.events.isEmpty())
 
@@ -494,6 +495,123 @@ class WatchPartyCoordinatorTest {
         host.onLocalSeek()
 
         assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun smallGapIsClosedBySpeedNotBySeeking() {
+        host.start()
+        guest.start()
+        guestPlayer.actions.clear()
+
+        // Half a second ahead: play 5% slower instead of jumping.
+        now = 2_000L
+        guestPlayer.positionMs = 62_500L
+        guest.onTick()
+        assertTrue(guestPlayer.actions.isEmpty())
+        assertEquals(0.95f, guestPlayer.playbackSpeed)
+
+        // Back in step: normal speed again.
+        now = 3_000L
+        guestPlayer.positionMs = 63_020L
+        guest.onTick()
+        assertEquals(1f, guestPlayer.playbackSpeed)
+        assertTrue(guestPlayer.actions.isEmpty())
+    }
+
+    @Test
+    fun behindFollowerSpeedsUpAndTinyGapsAreLeftAlone() {
+        host.start()
+        guest.start()
+
+        now = 2_000L
+        guestPlayer.positionMs = 61_700L
+        guest.onTick()
+        assertEquals(1.05f, guestPlayer.playbackSpeed)
+
+        // Once nudging, keep going until really close, not just under the start threshold.
+        now = 3_000L
+        guestPlayer.positionMs = 62_900L
+        guest.onTick()
+        assertEquals(1.05f, guestPlayer.playbackSpeed)
+
+        now = 4_000L
+        guestPlayer.positionMs = 63_970L
+        guest.onTick()
+        assertEquals(1f, guestPlayer.playbackSpeed)
+    }
+
+    @Test
+    fun followerMatchesTheControllersPlaybackSpeed() {
+        hostPlayer.playbackSpeed = 1.25f
+        host.start()
+        guest.start()
+
+        assertEquals(1.25f, guestPlayer.playbackSpeed)
+
+        // 4 seconds at 1.25x moves the controller 5 seconds on.
+        now = 4_000L
+        guestPlayer.positionMs = 65_000L
+        guest.onTick()
+        assertEquals(1.25f, guestPlayer.playbackSpeed)
+        assertTrue(guestPlayer.actions.none { it.startsWith("seek:") && it != "seek:60000" })
+    }
+
+    @Test
+    fun networkDelayIsMeasuredAndAimedFor() {
+        host.start()
+        guest.start()
+
+        // A 600 ms round trip means the controller's updates are about 300 ms old on arrival.
+        now = 1_000L
+        hostConnection.send(WatchPartyMessage.Pong(senderId = "host", to = "guest", sentAtMs = 400L))
+
+        now = 2_000L
+        guestPlayer.positionMs = 62_000L
+        guest.onTick()
+
+        assertEquals(1.05f, guestPlayer.playbackSpeed)
+    }
+
+    @Test
+    fun pingsAreAnsweredOnlyByTheController() {
+        host.start()
+        guest.start()
+        hub.sentMessages.clear()
+
+        now = 5_000L
+        guest.onHeartbeat()
+
+        val pong = hub.sentMessages.filterIsInstance<WatchPartyMessage.Pong>().single()
+        assertEquals("host", pong.senderId)
+        assertEquals("guest", pong.to)
+    }
+
+    @Test
+    fun leavingTheRoomResetsANudgedSpeed() {
+        host.start()
+        guest.start()
+        now = 2_000L
+        guestPlayer.positionMs = 62_500L
+        guest.onTick()
+
+        guest.stop()
+
+        assertEquals(1f, guestPlayer.playbackSpeed)
+    }
+
+    @Test
+    fun takingControlResetsANudgedSpeed() {
+        host.start()
+        guest.start()
+        now = 2_000L
+        guestPlayer.positionMs = 62_500L
+        guest.onTick()
+        assertEquals(0.95f, guestPlayer.playbackSpeed)
+
+        controller = "guest"
+        guest.onControllerChanged()
+
+        assertEquals(1f, guestPlayer.playbackSpeed)
     }
 
     @Test

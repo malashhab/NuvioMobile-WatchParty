@@ -76,6 +76,15 @@ class WatchPartyCoordinator(
     private var heldSinceMs: Long? = null
     private var announcedHoldId: String? = null
 
+    // One-way network delay to the controller, estimated from ping round trips. The controller's
+    // position is already this old when it arrives, so we aim this much further ahead.
+    private val roundTripSamplesMs = ArrayDeque<Long>()
+    private var oneWayLatencyMs = 0L
+
+    // Small gaps are closed by playing slightly faster or slower instead of seeking: -1 slower, 0 normal, 1 faster.
+    private var speedNudge = 0
+    private var appliedSpeed: Float? = null
+
     // True when the controller deliberately changed something (seek, play/pause, episode), as opposed
     // to a routine heartbeat. Deliberate changes skip the correction cooldown.
     private var targetJumped = false
@@ -99,6 +108,9 @@ class WatchPartyCoordinator(
         if (!started) return
         started = false
         transport.setListener(null)
+        // Don't leave the player running slightly fast or slow after leaving the room.
+        if (speedNudge != 0) player.setSpeed(targetPlayback?.speed ?: 1f)
+        speedNudge = 0
     }
 
     /** Call on every local play, pause, seek or episode change, and when the player finishes loading. */
@@ -147,8 +159,8 @@ class WatchPartyCoordinator(
     fun onHeartbeat() {
         if (!started) return
         if (!isController) {
-            // Lets the controller know we're still in the player and worth waiting for.
-            transport.send(WatchPartyMessage.KeepAlive(senderId = localMemberId))
+            // Measures the network delay, and lets the controller know we're still in the player.
+            transport.send(WatchPartyMessage.Ping(senderId = localMemberId, sentAtMs = nowMs()))
             return
         }
         val holdId = readyCheck.holdId
@@ -169,9 +181,8 @@ class WatchPartyCoordinator(
             evaluateHold()
         } else {
             checkControllerContact()
-            if (targetHoldId != null && targetHoldId != acknowledgedHoldId && nowMs() >= settlingUntilMs) {
-                enforceTargetPlayback()
-            }
+            // Re-checks the gap every second, so speed nudges start and stop on time.
+            if (nowMs() >= settlingUntilMs) enforceTargetPlayback()
             acknowledgeHoldIfReady()
             announceRoomWaitIfLong()
         }
@@ -186,6 +197,12 @@ class WatchPartyCoordinator(
     /** Call when control moves to another member. */
     fun onControllerChanged() {
         if (!started) return
+        // A nudged speed must not become the room's speed if we take control.
+        if (speedNudge != 0) player.setSpeed(targetPlayback?.speed ?: 1f)
+        speedNudge = 0
+        appliedSpeed = null
+        roundTripSamplesMs.clear()
+        oneWayLatencyMs = 0L
         readyCheck.cancel()
         followerSeenAtMs.clear()
         followerStalledSinceMs.clear()
@@ -210,6 +227,17 @@ class WatchPartyCoordinator(
             }
             is WatchPartyMessage.State -> onControllerState(message)
             is WatchPartyMessage.KeepAlive -> if (!isController && message.senderId == controllerId()) onControllerContact()
+            is WatchPartyMessage.Ping -> if (isController) {
+                transport.send(
+                    WatchPartyMessage.Pong(senderId = localMemberId, to = message.senderId, sentAtMs = message.sentAtMs),
+                )
+            }
+            is WatchPartyMessage.Pong -> if (
+                !isController && message.to == localMemberId && message.senderId == controllerId()
+            ) {
+                recordRoundTrip(nowMs() - message.sentAtMs)
+                onControllerContact()
+            }
             is WatchPartyMessage.LoadingChanged -> if (isController) {
                 if (message.isLoading) {
                     followerStalledSinceMs.getOrPut(message.senderId) { nowMs() }
@@ -383,6 +411,14 @@ class WatchPartyCoordinator(
         listener.onWaitingForRoom()
     }
 
+    // The fastest recent round trip is the best guess; slower ones were held up somewhere along the way.
+    private fun recordRoundTrip(roundTripMs: Long) {
+        if (roundTripMs < 0) return
+        roundTripSamplesMs.addLast(roundTripMs)
+        if (roundTripSamplesMs.size > ROUND_TRIP_SAMPLES) roundTripSamplesMs.removeFirst()
+        oneWayLatencyMs = (roundTripSamplesMs.min() / 2).coerceAtMost(MAX_ONE_WAY_LATENCY_MS)
+    }
+
     private fun onControllerContact() {
         lastContactAtMs = nowMs()
         if (contactLost) {
@@ -449,6 +485,7 @@ class WatchPartyCoordinator(
 
         val now = nowMs()
         var acted = false
+        var seeked = false
         val driftMs = local.positionMs - expectedPositionMs
         val coolingDown = lastCorrectionAtMs?.let { now - it < CORRECTION_COOLDOWN_MS } == true
         if (abs(driftMs) > driftToleranceMs && (targetJumped || !coolingDown)) {
@@ -459,6 +496,7 @@ class WatchPartyCoordinator(
             correctionStartedAtMs = now
             sawLoadingSinceCorrection = false
             acted = true
+            seeked = true
         }
         targetJumped = false
         if (target.isPlaying && !local.isPlaying) {
@@ -469,12 +507,29 @@ class WatchPartyCoordinator(
             acted = true
         }
         if (acted) startSettling()
+        adjustSpeed(target, canNudge = target.isPlaying && local.isPlaying && !seeked, driftMs = driftMs)
     }
 
-    // Network delay is ignored for now; it is usually well under the drift tolerance.
+    private fun adjustSpeed(target: WatchPartyPlayback, canNudge: Boolean, driftMs: Long) {
+        speedNudge = when {
+            !canNudge -> 0
+            abs(driftMs) <= NUDGE_STOP_MS -> 0
+            // Behind plays faster, ahead plays slower.
+            abs(driftMs) >= NUDGE_START_MS -> if (driftMs < 0) 1 else -1
+            // In between: keep nudging until we're close, rather than stopping at the edge.
+            else -> speedNudge
+        }
+        val speed = target.speed * (1f + speedNudge * NUDGE_FRACTION)
+        if (speed == appliedSpeed) return
+        appliedSpeed = speed
+        player.setSpeed(speed)
+    }
+
+    // Where the controller is now: its last report, moved on by the time since it was sent.
     private fun expectedTargetPositionMs(target: WatchPartyPlayback): Long =
         if (target.isPlaying) {
-            target.positionMs + (nowMs() - targetReceivedAtMs).coerceAtLeast(0L)
+            val elapsedMs = (nowMs() - targetReceivedAtMs).coerceAtLeast(0L) + oneWayLatencyMs
+            target.positionMs + (elapsedMs * target.speed).toLong()
         } else {
             target.positionMs
         }
@@ -497,6 +552,14 @@ class WatchPartyCoordinator(
         private const val FOLLOWER_ACTIVE_MS = 15_000L
         private const val STALL_GRACE_MS = 1_000L
         private const val ROOM_WAIT_ANNOUNCE_MS = 2_000L
+
+        private const val ROUND_TRIP_SAMPLES = 5
+        private const val MAX_ONE_WAY_LATENCY_MS = 1_000L
+
+        // Start nudging past 150 ms apart, stop once within 40 ms; 5% faster or slower is barely noticeable.
+        private const val NUDGE_START_MS = 150L
+        private const val NUDGE_STOP_MS = 40L
+        private const val NUDGE_FRACTION = 0.05f
         private val log = Logger.withTag("WatchPartySync")
     }
 }

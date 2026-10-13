@@ -26,5 +26,8 @@ interface WatchPartyPlayerPort {
     fun play()
     fun pause()
     fun seekTo(positionMs: Long)
+
+    /** Playback rate; followers nudge it slightly to close small gaps without seeking. */
+    fun setSpeed(speed: Float)
     fun openContent(content: WatchPartyContent, positionMs: Long, source: WatchPartySource?)
 }

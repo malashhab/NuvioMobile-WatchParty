@@ -48,6 +48,11 @@ internal class FakeWatchPartyPlayer(
     /** True mimics a source that has to load after every seek. */
     var loadsAfterSeek = false
 
+    var playbackSpeed = 1f
+
+    /** Kept apart from [actions], so tests about play, pause and seek aren't affected by speed nudges. */
+    val speedChanges = mutableListOf<Float>()
+
     override fun currentContent(): WatchPartyContent? = content
 
     override fun currentPositionMs(): Long? = content?.let { positionMs }
@@ -57,7 +62,12 @@ internal class FakeWatchPartyPlayer(
     override fun currentPlayback(): WatchPartyPlayback? {
         val current = content ?: return null
         if (!isReady) return null
-        return WatchPartyPlayback(content = current, isPlaying = isPlaying, positionMs = positionMs)
+        return WatchPartyPlayback(content = current, isPlaying = isPlaying, positionMs = positionMs, speed = playbackSpeed)
+    }
+
+    override fun setSpeed(speed: Float) {
+        playbackSpeed = speed
+        speedChanges += speed
     }
 
     override fun play() {

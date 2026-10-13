@@ -87,6 +87,7 @@ data class WatchPartyPlayback(
     val isPlaying: Boolean,
     val positionMs: Long,
     val source: WatchPartySource? = null,
+    val speed: Float = 1f,
 )
 
 data class WatchPartyRoom(
@@ -140,6 +141,23 @@ sealed interface WatchPartyMessage {
     @SerialName("keep_alive")
     data class KeepAlive(
         override val senderId: String,
+    ) : WatchPartyMessage
+
+    /** A follower measuring the network delay to the controller; times are on the follower's own clock. */
+    @Serializable
+    @SerialName("ping")
+    data class Ping(
+        override val senderId: String,
+        val sentAtMs: Long,
+    ) : WatchPartyMessage
+
+    /** The controller's immediate answer to [Ping], echoing its time back to the sender. */
+    @Serializable
+    @SerialName("pong")
+    data class Pong(
+        override val senderId: String,
+        val to: String,
+        val sentAtMs: Long,
     ) : WatchPartyMessage
 
     /** A follower's video stalled or recovered mid-play, so the controller can hold the room for them. */

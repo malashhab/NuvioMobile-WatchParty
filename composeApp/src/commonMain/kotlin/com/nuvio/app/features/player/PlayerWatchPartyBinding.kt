@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.details.MetaVideo
@@ -49,11 +50,18 @@ private const val WATCH_PARTY_TICK_MS = 1_000L
 private const val WATCH_PARTY_SEEK_REPORT_DELAY_MS = 700L
 
 private const val WATCH_PARTY_SOURCE_SEARCH_TIMEOUT_MS = 30_000L
+
+// A report this old means the player is stalled, not playing on; don't extrapolate past it.
+private const val MAX_SNAPSHOT_AGE_MS = 1_000L
 private const val WATCH_PARTY_SOURCE_MISSING_TOAST_MS = 5_000L
 
 internal class PlayerWatchPartyState(
     val coordinator: WatchPartyCoordinator,
+    private val port: PlayerWatchPartyPort,
 ) {
+    /** Call whenever the player reports a new snapshot. */
+    fun onSnapshot() = port.onSnapshot()
+
     var seekReportJob: Job? = null
     var sourceSearchJob: Job? = null
 }
@@ -126,15 +134,18 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     DisposableEffect(activeParty) {
         val session = activeParty?.let { party ->
             val startMark = TimeSource.Monotonic.markNow()
+            val nowMs = { startMark.elapsedNow().inWholeMilliseconds }
+            val port = PlayerWatchPartyPort(this@BindWatchPartyEffects, nowMs)
             PlayerWatchPartyState(
-                WatchPartyCoordinator(
+                coordinator = WatchPartyCoordinator(
                     localMemberId = party.localMemberId,
                     transport = party.transport,
-                    player = PlayerWatchPartyPort(this@BindWatchPartyEffects),
-                    nowMs = { startMark.elapsedNow().inWholeMilliseconds },
+                    player = port,
+                    nowMs = nowMs,
                     controllerId = { party.control.controllerId.value },
                     listener = PlayerWatchPartyEvents(this@BindWatchPartyEffects),
                 ),
+                port = port,
             )
         }
         watchParty = session
@@ -147,8 +158,13 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
         }
     }
 
-    val coordinator = watchParty?.coordinator ?: return
+    val session = watchParty ?: return
+    val coordinator = session.coordinator
     val party = activeParty ?: return
+
+    LaunchedEffect(session) {
+        snapshotFlow { playbackSnapshot }.collect { session.onSnapshot() }
+    }
 
     // The connection drops and comes back on its own; catch up each time it does.
     LaunchedEffect(coordinator, party) {
@@ -220,9 +236,23 @@ private fun PlayerScreenRuntime.showWatchPartyMembersToast(message: StringResour
     }
 }
 
-private class PlayerWatchPartyPort(
+internal class PlayerWatchPartyPort(
     private val runtime: PlayerScreenRuntime,
+    private val nowMs: () -> Long,
 ) : WatchPartyPlayerPort {
+    // The player reports its position every quarter second; add how long ago the last report came in.
+    private var snapshotSeenAtMs = 0L
+
+    fun onSnapshot() {
+        snapshotSeenAtMs = nowMs()
+    }
+
+    private fun livePositionMs(snapshot: PlayerPlaybackSnapshot): Long {
+        if (!snapshot.isPlaying) return snapshot.positionMs
+        val ageMs = (nowMs() - snapshotSeenAtMs).coerceIn(0L, MAX_SNAPSHOT_AGE_MS)
+        return snapshot.positionMs + (ageMs * snapshot.playbackSpeed).toLong()
+    }
+
     override fun currentContent(): WatchPartyContent =
         WatchPartyContent(
             parentMetaId = runtime.parentMetaId,
@@ -240,14 +270,15 @@ private class PlayerWatchPartyPort(
         return WatchPartyPlayback(
             content = currentContent(),
             isPlaying = snapshot.isPlaying,
-            positionMs = snapshot.positionMs,
+            positionMs = livePositionMs(snapshot),
             source = currentSource(),
+            speed = snapshot.playbackSpeed,
         )
     }
 
     override fun currentPositionMs(): Long =
         if (runtime.playerController != null && runtime.playerControllerSourceUrl == runtime.activeSourceUrl) {
-            runtime.playbackSnapshot.positionMs
+            livePositionMs(runtime.playbackSnapshot)
         } else {
             // A new stream is still opening; it will start where it was told to.
             runtime.activeInitialPositionMs
@@ -267,6 +298,10 @@ private class PlayerWatchPartyPort(
 
     override fun seekTo(positionMs: Long) {
         runtime.playerController?.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
+    override fun setSpeed(speed: Float) {
+        runtime.playerController?.setPlaybackSpeed(speed)
     }
 
     // Every member plays from their own sources: find the controller's source among ours, or let the user pick.

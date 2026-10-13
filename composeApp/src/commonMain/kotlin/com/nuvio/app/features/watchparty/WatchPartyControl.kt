@@ -123,6 +123,8 @@ class WatchPartyControl(
             is WatchPartyMessage.LoadingChanged,
             is WatchPartyMessage.Ready,
             is WatchPartyMessage.Chat,
+            is WatchPartyMessage.Ping,
+            is WatchPartyMessage.Pong,
             -> false
         }
     }
