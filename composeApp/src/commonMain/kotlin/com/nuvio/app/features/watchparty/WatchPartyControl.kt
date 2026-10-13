@@ -122,6 +122,7 @@ class WatchPartyControl(
             is WatchPartyMessage.KeepAlive,
             is WatchPartyMessage.LoadingChanged,
             is WatchPartyMessage.Ready,
+            is WatchPartyMessage.Chat,
             -> false
         }
     }

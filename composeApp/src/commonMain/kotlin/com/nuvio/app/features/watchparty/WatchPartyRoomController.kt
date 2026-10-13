@@ -9,6 +9,7 @@ import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.realtime.track
+import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -87,6 +88,11 @@ object WatchPartyRoomController {
     private var transport: SupabaseWatchPartyTransport? = null
     private var control: WatchPartyControl? = null
 
+    private val _chat = MutableStateFlow<WatchPartyChat?>(null)
+
+    /** The current room's chat, or null outside a room. */
+    val chat: StateFlow<WatchPartyChat?> = _chat.asStateFlow()
+
     fun createRoom() {
         open(code = WatchPartyRoomCode.generate(), isOwner = true)
     }
@@ -125,6 +131,7 @@ object WatchPartyRoomController {
         transport?.close()
         transport = null
         control = null
+        _chat.value = null
         channel?.let { closing ->
             scope.launch {
                 try {
@@ -161,13 +168,25 @@ object WatchPartyRoomController {
         val roomControl = WatchPartyControl(room = room, localMemberId = localMemberId, send = networkTransport::send)
         val playbackTransport = PlaybackTransport(networkTransport)
         // Control messages are handled here, app-wide; playback messages go on to the player.
+        val clock = TimeSource.Monotonic.markNow()
+        val roomChat = WatchPartyChat(
+            localMemberId = localMemberId,
+            localName = ::localMemberName,
+            send = networkTransport::send,
+            nowMs = { clock.elapsedNow().inWholeMilliseconds },
+        )
         networkTransport.setListener { message ->
-            if (!roomControl.onMessage(message)) playbackTransport.deliver(message)
+            when {
+                message is WatchPartyMessage.Chat -> roomChat.onMessage(message)
+                roomControl.onMessage(message) -> Unit
+                else -> playbackTransport.deliver(message)
+            }
         }
 
         channel = roomChannel
         transport = networkTransport
         control = roomControl
+        _chat.value = roomChat
         roomJob = job
         _status.value = WatchPartyStatus(
             code = code,

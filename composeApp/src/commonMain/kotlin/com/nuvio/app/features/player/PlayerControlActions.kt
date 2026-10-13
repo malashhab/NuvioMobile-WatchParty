@@ -62,9 +62,14 @@ internal fun PlayerToolbar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onWatchPartyClick: (() -> Unit)? = null,
+    onWatchPartyChatClick: (() -> Unit)? = null,
+    watchPartyChatUnread: Int = 0,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
+        onWatchPartyChatClick?.let {
+            WatchPartyChatAction(unreadCount = watchPartyChatUnread, onClick = it)
+        }
         onWatchPartyClick?.let {
             PlayerAction(
                 description = stringResource(Res.string.watch_party_title),

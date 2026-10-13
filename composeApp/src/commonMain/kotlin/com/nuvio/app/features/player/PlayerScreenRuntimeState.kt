@@ -134,6 +134,7 @@ internal class PlayerScreenRuntime(
     var playerControllerSourceUrl by mutableStateOf<String?>(null)
     var watchParty by mutableStateOf<PlayerWatchPartyState?>(null)
     var showWatchPartyDialog by mutableStateOf(false)
+    var showWatchPartyChat by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
     var isScrubbingTimeline by mutableStateOf(false)
     var scrubbingPositionMs by mutableStateOf<Long?>(null)

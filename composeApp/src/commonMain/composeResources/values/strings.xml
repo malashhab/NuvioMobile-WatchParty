@@ -2489,6 +2489,12 @@
     <string name="watch_party_waiting_for_room">Ready. Waiting for the others…</string>
     <string name="watch_party_continuing_without">Continuing without %1$s.</string>
     <string name="watch_party_unknown_member">a member</string>
+    <string name="watch_party_chat">Chat</string>
+    <string name="watch_party_chat_empty">No messages yet. Say hi!</string>
+    <string name="watch_party_chat_placeholder">Message</string>
+    <string name="watch_party_chat_send">Send</string>
+    <string name="watch_party_chat_too_fast">Slow down a little.</string>
+    <string name="watch_party_chat_you">You</string>
     <string name="watch_party_finding_source">Finding the same source…</string>
     <string name="watch_party_source_missing">You don't have the same source (%1$s). Pick one to keep watching together.</string>
     <string name="watch_party_status_connecting">Connecting…</string>

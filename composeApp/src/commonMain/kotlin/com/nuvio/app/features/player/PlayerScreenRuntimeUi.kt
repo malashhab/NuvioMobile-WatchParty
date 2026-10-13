@@ -305,6 +305,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 args.onBack()
             },
             onWatchPartyClick = watchPartyClickHandler(),
+            onWatchPartyChatClick = watchPartyChatClickHandler(),
+            watchPartyChatUnread = watchPartyChatUnreadCount(),
             onTogglePlayback = { togglePlayback() },
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },

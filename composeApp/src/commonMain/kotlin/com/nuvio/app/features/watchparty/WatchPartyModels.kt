@@ -150,6 +150,16 @@ sealed interface WatchPartyMessage {
         val isLoading: Boolean,
     ) : WatchPartyMessage
 
+    /** A chat line. Relayed live and never stored, so members who join later don't see it. */
+    @Serializable
+    @SerialName("chat")
+    data class Chat(
+        override val senderId: String,
+        val id: String,
+        val name: String,
+        val text: String,
+    ) : WatchPartyMessage
+
     /** A member asks the owner for control. */
     @Serializable
     @SerialName("control_request")
