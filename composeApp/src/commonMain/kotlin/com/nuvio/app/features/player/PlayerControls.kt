@@ -116,6 +116,7 @@ internal fun PlayerControlsShell(
     onWatchPartyClick: (() -> Unit)? = null,
     onWatchPartyChatClick: (() -> Unit)? = null,
     watchPartyChatUnread: Int = 0,
+    watchPartyMemberCount: Int = 0,
     parentalWarnings: List<ParentalWarning> = emptyList(),
     showParentalGuide: Boolean = false,
     onParentalGuideAnimationComplete: () -> Unit = {},
@@ -205,6 +206,7 @@ internal fun PlayerControlsShell(
                         onWatchPartyClick = onWatchPartyClick,
                         onWatchPartyChatClick = onWatchPartyChatClick,
                         watchPartyChatUnread = watchPartyChatUnread,
+                        watchPartyMemberCount = watchPartyMemberCount,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Top))

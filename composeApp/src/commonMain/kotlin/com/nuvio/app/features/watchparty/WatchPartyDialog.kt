@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,6 +23,7 @@ import com.nuvio.app.core.ui.DialogButtonStyle
 import com.nuvio.app.core.ui.DialogButtons
 import com.nuvio.app.core.ui.DialogSurface
 import com.nuvio.app.core.ui.NuvioInputField
+import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
 import nuvio.composeapp.generated.resources.*
@@ -102,6 +105,7 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
             fontWeight = FontWeight.Bold,
             letterSpacing = 4.sp,
         )
+        InviteButtons(code)
         Text(
             text = stringResource(
                 when (status.connection) {
@@ -130,13 +134,65 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
 
     ControlSection(status)
 
+    LeaveButtons(isOwner = status.isOwner, onDismiss = onDismiss)
+}
+
+@Composable
+private fun InviteButtons(code: String) {
+    val clipboard = LocalClipboardManager.current
+    val share = rememberTextSharer()
+    val formatted = WatchPartyRoomCode.format(code)
+    val copiedMessage = stringResource(Res.string.watch_party_code_copied)
+    val inviteText = stringResource(Res.string.watch_party_invite_message, formatted, buildWatchPartyInviteUrl(code))
+
     DialogButtons {
         DialogButton(
-            text = stringResource(Res.string.watch_party_leave),
-            onClick = WatchPartyRoomController::leave,
-            style = DialogButtonStyle.Destructive,
+            text = stringResource(Res.string.watch_party_copy_code),
+            onClick = {
+                clipboard.setText(AnnotatedString(formatted))
+                NuvioToastController.show(copiedMessage)
+            },
         )
-        DialogButton(text = stringResource(Res.string.watch_party_close), onClick = onDismiss)
+        share?.let {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_share_invite),
+                onClick = { it(inviteText) },
+            )
+        }
+    }
+}
+
+/** Leaving asks first, so a mis-tap doesn't drop you out of the room. */
+@Composable
+private fun LeaveButtons(isOwner: Boolean, onDismiss: () -> Unit) {
+    var confirming by remember { mutableStateOf(false) }
+    val tokens = MaterialTheme.nuvio
+
+    if (confirming) {
+        Text(
+            text = stringResource(
+                if (isOwner) Res.string.watch_party_leave_confirm_owner else Res.string.watch_party_leave_confirm,
+            ),
+            color = tokens.colors.textSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        DialogButtons {
+            DialogButton(text = stringResource(Res.string.watch_party_stay), onClick = { confirming = false })
+            DialogButton(
+                text = stringResource(Res.string.watch_party_leave),
+                onClick = WatchPartyRoomController::leave,
+                style = DialogButtonStyle.Destructive,
+            )
+        }
+    } else {
+        DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_leave),
+                onClick = { confirming = true },
+                style = DialogButtonStyle.Destructive,
+            )
+            DialogButton(text = stringResource(Res.string.watch_party_close), onClick = onDismiss)
+        }
     }
 }
 

@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -64,6 +65,7 @@ import nuvio.composeapp.generated.resources.watch_party_chat_placeholder
 import nuvio.composeapp.generated.resources.watch_party_chat_send
 import nuvio.composeapp.generated.resources.watch_party_chat_too_fast
 import nuvio.composeapp.generated.resources.watch_party_chat_you
+import nuvio.composeapp.generated.resources.watch_party_title
 import org.jetbrains.compose.resources.stringResource
 
 private const val CHAT_POPUP_DURATION_MS = 4_000L
@@ -84,6 +86,30 @@ internal fun watchPartyChatUnreadCount(): Int {
     val chat by WatchPartyRoomController.chat.collectAsStateWithLifecycle()
     val state = chat?.state?.collectAsStateWithLifecycle()?.value ?: return 0
     return state.unreadCount
+}
+
+/** How many people are in the room, shown on the Watch Party button; 0 outside a room. */
+@Composable
+internal fun watchPartyMemberCount(): Int {
+    val status by WatchPartyRoomController.status.collectAsStateWithLifecycle()
+    return if (status.code != null) status.members.size else 0
+}
+
+@Composable
+internal fun WatchPartyAction(memberCount: Int, onClick: () -> Unit) {
+    val description = stringResource(Res.string.watch_party_title)
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+        BadgedBox(
+            badge = {
+                if (memberCount > 0) {
+                    // White, so it reads differently from the red unread-chat badge.
+                    Badge(containerColor = Color.White, contentColor = Color.Black) { Text(memberCount.toString()) }
+                }
+            },
+        ) {
+            Icon(Icons.Rounded.Groups, description, tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+    }
 }
 
 @Composable
@@ -118,6 +144,9 @@ internal fun PlayerScreenRuntime.RenderWatchPartyChat() {
         visible = showWatchPartyChat,
         onDismiss = { showWatchPartyChat = false },
         width = 400.dp,
+        // See-through, so the video stays watchable while chatting.
+        scrimAlpha = 0.1f,
+        panelAlpha = 0.72f,
     ) {
         ChatPanelContent(chat = chat, state = state, onClose = { showWatchPartyChat = false })
     }

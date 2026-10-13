@@ -2489,6 +2489,15 @@
     <string name="watch_party_waiting_for_room">Ready. Waiting for the others…</string>
     <string name="watch_party_continuing_without">Continuing without %1$s.</string>
     <string name="watch_party_unknown_member">a member</string>
+    <string name="watch_party_copy_code">Copy code</string>
+    <string name="watch_party_code_copied">Room code copied</string>
+    <string name="watch_party_share_invite">Share invite</string>
+    <string name="watch_party_invite_message">Join my Nuvio Watch Party! Open Nuvio, start a video, tap the Watch Party button and enter code %1$s. Or tap: %2$s</string>
+    <string name="watch_party_joined_from_invite">Joined Watch Party %1$s. Open a video to watch together.</string>
+    <string name="watch_party_already_in_room">You're already in Watch Party %1$s.</string>
+    <string name="watch_party_leave_confirm">Leave this Watch Party?</string>
+    <string name="watch_party_leave_confirm_owner">Leave this Watch Party? You created it, so if you leave, nobody can hand out control anymore.</string>
+    <string name="watch_party_stay">Stay</string>
     <string name="watch_party_chat">Chat</string>
     <string name="watch_party_chat_empty">No messages yet. Say hi!</string>
     <string name="watch_party_chat_placeholder">Message</string>

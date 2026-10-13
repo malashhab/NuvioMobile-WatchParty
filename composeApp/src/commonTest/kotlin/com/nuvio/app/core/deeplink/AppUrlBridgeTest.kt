@@ -7,6 +7,28 @@ import kotlin.test.assertNull
 class AppUrlBridgeTest {
 
     @Test
+    fun `parses watch party invite deeplink`() {
+        assertEquals(
+            AppDeepLink.WatchPartyJoin(code = "K7QMP4XD"),
+            parseAppDeepLink("nuvio://watchparty/k7qm-p4xd"),
+        )
+    }
+
+    @Test
+    fun `parses watch party invite with code parameter`() {
+        assertEquals(
+            AppDeepLink.WatchPartyJoin(code = "K7QMP4XD"),
+            parseAppDeepLink("nuvio://watchparty?code=K7QMP4XD"),
+        )
+    }
+
+    @Test
+    fun `ignores watch party invite with invalid code`() {
+        assertNull(parseAppDeepLink("nuvio://watchparty/NOT-VALID-0"))
+        assertNull(parseAppDeepLink("nuvio://watchparty"))
+    }
+
+    @Test
     fun `parses existing notification meta deeplink`() {
         assertEquals(
             AppDeepLink.Meta(type = "series", id = "tt0944947"),

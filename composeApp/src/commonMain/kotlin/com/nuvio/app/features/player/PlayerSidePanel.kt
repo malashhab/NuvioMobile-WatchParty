@@ -61,6 +61,8 @@ internal fun PlayerSidePanel(
     onDismiss: () -> Unit,
     width: Dp = 520.dp,
     modifier: Modifier = Modifier,
+    scrimAlpha: Float = 0.34f,
+    panelAlpha: Float = 1f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -78,7 +80,7 @@ internal fun PlayerSidePanel(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.34f))
+                .background(Color.Black.copy(alpha = scrimAlpha))
                 .clickable(
                     interactionSource = backgroundInteraction,
                     indication = null,
@@ -99,7 +101,7 @@ internal fun PlayerSidePanel(
                         .width(resolvedWidth)
                         .fillMaxHeight()
                         .clip(shape)
-                        .background(tokens.colors.surfaceElevated)
+                        .background(tokens.colors.surfaceElevated.copy(alpha = panelAlpha))
                         .clickable(
                             interactionSource = panelInteraction,
                             indication = null,

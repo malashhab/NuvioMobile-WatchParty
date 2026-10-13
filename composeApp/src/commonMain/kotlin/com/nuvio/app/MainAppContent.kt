@@ -72,6 +72,7 @@ import com.nuvio.app.core.ui.NuvioFloatingPrompt
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.features.watchparty.handleWatchPartyInvite
 import com.nuvio.app.core.ui.NuvioToastHost
 import com.nuvio.app.core.ui.PosterZoomAnchor
 import com.nuvio.app.core.ui.PosterZoomAnchorHolder
@@ -752,6 +753,11 @@ internal fun MainAppContent(
                         navController.navigate(DownloadsRoute(downloadsTitle)) {
                             launchSingleTop = true
                         }
+                        AppDeepLinkRepository.markConsumed(deepLink)
+                    }
+
+                    is AppDeepLink.WatchPartyJoin -> {
+                        handleWatchPartyInvite(deepLink.code)
                         AppDeepLinkRepository.markConsumed(deepLink)
                     }
 

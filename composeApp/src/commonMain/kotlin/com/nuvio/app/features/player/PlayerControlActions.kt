@@ -19,7 +19,6 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Flag
-import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
@@ -64,6 +63,7 @@ internal fun PlayerToolbar(
     onWatchPartyClick: (() -> Unit)? = null,
     onWatchPartyChatClick: (() -> Unit)? = null,
     watchPartyChatUnread: Int = 0,
+    watchPartyMemberCount: Int = 0,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
@@ -71,11 +71,7 @@ internal fun PlayerToolbar(
             WatchPartyChatAction(unreadCount = watchPartyChatUnread, onClick = it)
         }
         onWatchPartyClick?.let {
-            PlayerAction(
-                description = stringResource(Res.string.watch_party_title),
-                icon = Icons.Rounded.Groups,
-                onClick = it,
-            )
+            WatchPartyAction(memberCount = watchPartyMemberCount, onClick = it)
         }
         PlayerAction(
             description = stringResource(
