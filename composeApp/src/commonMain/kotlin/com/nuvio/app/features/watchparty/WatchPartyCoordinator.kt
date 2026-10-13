@@ -34,6 +34,7 @@ class WatchPartyCoordinator(
     private var hostPlayback: WatchPartyPlayback? = null
     private var hostPlaybackReceivedAtMs = 0L
     private var settlingUntilMs = Long.MIN_VALUE
+    private var requestedContent: WatchPartyContent? = null
 
     fun start() {
         if (started) return
@@ -111,10 +112,15 @@ class WatchPartyCoordinator(
         val expectedPositionMs = expectedHostPositionMs(target)
 
         if (player.currentContent() != target.content) {
-            player.openContent(target.content, expectedPositionMs)
-            startSettling()
+            // Ask once per content change; the guest may still be picking a source when the next heartbeat arrives.
+            if (requestedContent != target.content) {
+                requestedContent = target.content
+                player.openContent(target.content, expectedPositionMs)
+                startSettling()
+            }
             return
         }
+        requestedContent = null
         // Still loading. The player reports again once ready, and we line up then.
         val local = player.currentPlayback() ?: return
 

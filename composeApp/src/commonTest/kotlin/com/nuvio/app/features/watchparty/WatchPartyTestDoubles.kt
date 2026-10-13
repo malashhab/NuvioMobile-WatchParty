@@ -42,6 +42,9 @@ internal class FakeWatchPartyPlayer(
 ) : WatchPartyPlayerPort {
     val actions = mutableListOf<String>()
 
+    /** False mimics the real player, which only switches once the user picks a source. */
+    var switchesContentOnOpen = true
+
     override fun currentContent(): WatchPartyContent? = content
 
     override fun currentPlayback(): WatchPartyPlayback? {
@@ -66,11 +69,12 @@ internal class FakeWatchPartyPlayer(
     }
 
     override fun openContent(content: WatchPartyContent, positionMs: Long) {
+        actions += "open:${content.videoId}@$positionMs"
+        if (!switchesContentOnOpen) return
         this.content = content
         this.positionMs = positionMs
         isReady = false
         isPlaying = false
-        actions += "open:${content.videoId}@$positionMs"
     }
 }
 

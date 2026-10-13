@@ -107,6 +107,23 @@ class WatchPartyCoordinatorTest {
     }
 
     @Test
+    fun heartbeatsWhileGuestPicksASourceDoNotReopenTheEpisode() {
+        host.start()
+        guest.start()
+        guestPlayer.actions.clear()
+        guestPlayer.switchesContentOnOpen = false
+
+        hostPlayer.content = episodeTwo
+        host.onLocalPlaybackChanged()
+        now = 5_000L
+        host.onHeartbeat()
+        now = 10_000L
+        host.onHeartbeat()
+
+        assertEquals(1, guestPlayer.actions.count { it.startsWith("open:") })
+    }
+
+    @Test
     fun guestCannotControlTheRoom() {
         host.start()
         guest.start()
