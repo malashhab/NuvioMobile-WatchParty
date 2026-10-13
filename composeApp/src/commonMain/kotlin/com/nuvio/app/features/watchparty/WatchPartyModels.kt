@@ -116,6 +116,16 @@ sealed interface WatchPartyMessage {
         val epoch: String,
         val seq: Long,
         val playback: WatchPartyPlayback,
+        /** Set while the room is held: get ready at this position, answer with [Ready], and wait. */
+        val holdId: String? = null,
+    ) : WatchPartyMessage
+
+    /** A member is loaded and positioned for the hold the controller announced. */
+    @Serializable
+    @SerialName("ready")
+    data class Ready(
+        override val senderId: String,
+        val holdId: String,
     ) : WatchPartyMessage
 
     /** Sent by a member that joined or reconnected and needs the current state. */
@@ -123,6 +133,21 @@ sealed interface WatchPartyMessage {
     @SerialName("state_request")
     data class StateRequest(
         override val senderId: String,
+    ) : WatchPartyMessage
+
+    /** "Still here" between updates: from the controller while it loads, and from followers in the player. */
+    @Serializable
+    @SerialName("keep_alive")
+    data class KeepAlive(
+        override val senderId: String,
+    ) : WatchPartyMessage
+
+    /** A follower's video stalled or recovered mid-play, so the controller can hold the room for them. */
+    @Serializable
+    @SerialName("loading")
+    data class LoadingChanged(
+        override val senderId: String,
+        val isLoading: Boolean,
     ) : WatchPartyMessage
 
     /** A member asks the owner for control. */

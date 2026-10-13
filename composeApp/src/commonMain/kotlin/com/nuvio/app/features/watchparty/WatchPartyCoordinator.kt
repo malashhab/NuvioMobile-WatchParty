@@ -9,6 +9,9 @@ import kotlin.uuid.Uuid
  * Keeps one member's player in step with the room. The controller is the single source of truth:
  * it broadcasts its state, and everyone else follows it. Followers never broadcast playback, so a
  * command applied on a follower can never echo back into the room.
+ *
+ * Everyone starts together: when the controller plays, seeks or changes episode, or anyone's video
+ * stalls, the controller holds the room at one position until every member reports ready.
  */
 @OptIn(ExperimentalUuidApi::class)
 class WatchPartyCoordinator(
@@ -18,10 +21,25 @@ class WatchPartyCoordinator(
     private val nowMs: () -> Long,
     /** Who controls playback right now; see [WatchPartyControl]. */
     private val controllerId: () -> String,
+    private val listener: Listener = object : Listener {},
     private val driftToleranceMs: Long = DEFAULT_DRIFT_TOLERANCE_MS,
     private val settleWindowMs: Long = DEFAULT_SETTLE_WINDOW_MS,
     private val epoch: String = Uuid.random().toString(),
 ) {
+    /** Room events worth telling the user about. */
+    interface Listener {
+        fun onControllerContactChanged(lost: Boolean) {}
+
+        /** Controller: still waiting for these members. */
+        fun onWaitingForMembers(memberIds: List<String>) {}
+
+        /** Controller: gave up waiting for these members. */
+        fun onContinuedWithout(memberIds: List<String>) {}
+
+        /** Follower: we're ready, but the room is still waiting for others. */
+        fun onWaitingForRoom() {}
+    }
+
     val isController: Boolean
         get() = localMemberId == controllerId()
 
@@ -29,6 +47,19 @@ class WatchPartyCoordinator(
 
     // Controller side.
     private var nextSeq = 1L
+    private val readyCheck = WatchPartyReadyCheck()
+    private val followerSeenAtMs = mutableMapOf<String, Long>()
+    private val followerStalledSinceMs = mutableMapOf<String, Long>()
+
+    // Members we stopped waiting for; not waited for again until their video recovers.
+    private val givenUpOn = mutableSetOf<String>()
+
+    // Whether followers were last told we're playing.
+    private var sentPlaying = false
+
+    // Our own play and pause commands echo back as player events a moment later; don't treat those as
+    // new actions.
+    private var controllerSettleUntilMs = Long.MIN_VALUE
 
     // Follower side.
     private var controllerEpoch: String? = null
@@ -37,6 +68,13 @@ class WatchPartyCoordinator(
     private var targetReceivedAtMs = 0L
     private var settlingUntilMs = Long.MIN_VALUE
     private var requestedContent: WatchPartyContent? = null
+    private var lastContactAtMs = 0L
+    private var contactLost = false
+    private var reportedStall: Boolean? = null
+    private var targetHoldId: String? = null
+    private var acknowledgedHoldId: String? = null
+    private var heldSinceMs: Long? = null
+    private var announcedHoldId: String? = null
 
     // True when the controller deliberately changed something (seek, play/pause, episode), as opposed
     // to a routine heartbeat. Deliberate changes skip the correction cooldown.
@@ -52,6 +90,7 @@ class WatchPartyCoordinator(
     fun start() {
         if (started) return
         started = true
+        lastContactAtMs = nowMs()
         transport.setListener(::onMessage)
         if (isController) broadcastState() else requestState()
     }
@@ -66,17 +105,76 @@ class WatchPartyCoordinator(
     fun onLocalPlaybackChanged() {
         if (!started) return
         if (isController) {
-            broadcastState()
+            onControllerPlaybackChanged()
             return
         }
         measureCorrectionCost()
+        reportStallIfChanged()
         if (nowMs() >= settlingUntilMs) enforceTargetPlayback()
+        acknowledgeHoldIfReady()
     }
 
-    /** Call about every 5 seconds. The controller re-sends its state so lost messages and drift heal on their own. */
+    /** The controller pressed play. Returns false when not in control. */
+    fun requestPlay(): Boolean {
+        if (!started || !isController) return false
+        if (readyCheck.isHolding) {
+            // Pressing play while waiting means "don't wait".
+            readyCheck.cancel()
+            releaseHold()
+        } else {
+            startHold()
+        }
+        return true
+    }
+
+    /** The controller pressed pause. Returns false when not in control. */
+    fun requestPause(): Boolean {
+        if (!started || !isController) return false
+        readyCheck.cancel()
+        player.pause()
+        controllerSettleUntilMs = nowMs() + settleWindowMs
+        sendConstructedState(isPlaying = false, holdId = null)
+        return true
+    }
+
+    /** Call after the controller seeks; playing rooms line up at the new position before continuing. */
+    fun onLocalSeek() {
+        if (!started || !isController) return
+        if (sentPlaying || readyCheck.isHolding) startHold(restart = true) else broadcastState()
+    }
+
+    /** Call about every 5 seconds, so lost messages and drift heal on their own. */
     fun onHeartbeat() {
         if (!started) return
-        if (isController) broadcastState()
+        if (!isController) {
+            // Lets the controller know we're still in the player and worth waiting for.
+            transport.send(WatchPartyMessage.KeepAlive(senderId = localMemberId))
+            return
+        }
+        val holdId = readyCheck.holdId
+        when {
+            holdId != null -> sendConstructedState(isPlaying = false, holdId = holdId)
+            nowMs() < controllerSettleUntilMs -> Unit
+            player.currentPlayback() != null -> broadcastState()
+            // Loading, so there is no position to share; still let followers know we're here.
+            else -> transport.send(WatchPartyMessage.KeepAlive(senderId = localMemberId))
+        }
+    }
+
+    /** Call about once a second, for timers that need finer steps than the heartbeat. */
+    fun onTick() {
+        if (!started) return
+        if (isController) {
+            holdForStalledFollowers()
+            evaluateHold()
+        } else {
+            checkControllerContact()
+            if (targetHoldId != null && targetHoldId != acknowledgedHoldId && nowMs() >= settlingUntilMs) {
+                enforceTargetPlayback()
+            }
+            acknowledgeHoldIfReady()
+            announceRoomWaitIfLong()
+        }
     }
 
     /** Call when the connection comes back after dropping. */
@@ -88,30 +186,153 @@ class WatchPartyCoordinator(
     /** Call when control moves to another member. */
     fun onControllerChanged() {
         if (!started) return
+        readyCheck.cancel()
+        followerSeenAtMs.clear()
+        followerStalledSinceMs.clear()
+        givenUpOn.clear()
+        sentPlaying = false
+        reportedStall = null
+        targetHoldId = null
+        acknowledgedHoldId = null
+        heldSinceMs = null
+        lastContactAtMs = nowMs()
         if (isController) broadcastState() else requestState()
     }
 
     private fun onMessage(message: WatchPartyMessage) {
         if (message.senderId == localMemberId) return
+        // Any message from a follower shows they're still in the player.
+        if (isController) followerSeenAtMs[message.senderId] = nowMs()
         when (message) {
-            is WatchPartyMessage.StateRequest -> if (isController) broadcastState()
+            is WatchPartyMessage.StateRequest -> if (isController) {
+                val holdId = readyCheck.holdId
+                if (holdId != null) sendConstructedState(isPlaying = false, holdId = holdId) else broadcastState()
+            }
             is WatchPartyMessage.State -> onControllerState(message)
+            is WatchPartyMessage.KeepAlive -> if (!isController && message.senderId == controllerId()) onControllerContact()
+            is WatchPartyMessage.LoadingChanged -> if (isController) {
+                if (message.isLoading) {
+                    followerStalledSinceMs.getOrPut(message.senderId) { nowMs() }
+                } else {
+                    followerStalledSinceMs.remove(message.senderId)
+                    givenUpOn.remove(message.senderId)
+                }
+            }
+            is WatchPartyMessage.Ready -> if (isController) {
+                followerStalledSinceMs.remove(message.senderId)
+                givenUpOn.remove(message.senderId)
+                readyCheck.onReady(message.senderId, message.holdId)
+                evaluateHold()
+            }
             else -> Unit
         }
+    }
+
+    // Controller side.
+
+    private fun onControllerPlaybackChanged() {
+        if (readyCheck.isHolding) {
+            evaluateHold()
+            return
+        }
+        val playback = player.currentPlayback()
+        if (playback == null) {
+            // Our own video stalled mid-play, or is opening a new episode: hold everyone until we're back.
+            if (sentPlaying) startHold()
+            return
+        }
+        if (nowMs() < controllerSettleUntilMs) return
+        // Started some other way than our play button (e.g. a notification): line everyone up first.
+        if (playback.isPlaying && !sentPlaying) startHold() else broadcastState()
+    }
+
+    private fun startHold(restart: Boolean = false) {
+        if (restart) readyCheck.cancel()
+        val holdId = readyCheck.start(idPrefix = epoch, nowMs = nowMs(), members = activeFollowers())
+        log.d { "Holding the room until everyone is ready ($holdId)" }
+        player.pause()
+        controllerSettleUntilMs = nowMs() + settleWindowMs
+        sendConstructedState(isPlaying = false, holdId = holdId)
+        evaluateHold()
+    }
+
+    private fun evaluateHold() {
+        val decision = readyCheck.evaluate(
+            nowMs = nowMs(),
+            controllerReady = player.currentPlayback() != null,
+            activeMembers = activeFollowers(),
+        )
+        when (decision) {
+            WatchPartyReadyCheck.Decision.None -> Unit
+            is WatchPartyReadyCheck.Decision.Announce -> listener.onWaitingForMembers(decision.memberIds)
+            WatchPartyReadyCheck.Decision.Release -> releaseHold()
+            is WatchPartyReadyCheck.Decision.ReleaseWithout -> {
+                log.d { "Continuing without ${decision.memberIds}" }
+                givenUpOn += decision.memberIds
+                listener.onContinuedWithout(decision.memberIds)
+                releaseHold()
+            }
+        }
+    }
+
+    private fun releaseHold() {
+        log.d { "Everyone is ready; playing" }
+        player.play()
+        controllerSettleUntilMs = nowMs() + settleWindowMs
+        // Built from intent, not from the player, which reports the change a moment later.
+        sendConstructedState(isPlaying = true, holdId = null)
+    }
+
+    private fun holdForStalledFollowers() {
+        if (readyCheck.isHolding || !sentPlaying) return
+        val now = nowMs()
+        val active = activeFollowers()
+        // Ignore brief hiccups; pause everyone only for a real stall.
+        val stalled = followerStalledSinceMs.any { (memberId, sinceMs) ->
+            memberId in active && now - sinceMs >= STALL_GRACE_MS
+        }
+        if (stalled) startHold()
+    }
+
+    private fun activeFollowers(): Set<String> {
+        val now = nowMs()
+        return followerSeenAtMs.filterValues { now - it < FOLLOWER_ACTIVE_MS }.keys - givenUpOn
     }
 
     private fun broadcastState() {
         // While the controller is still loading, followers wait for the first real state.
         val playback = player.currentPlayback() ?: return
+        send(playback, holdId = null)
+    }
+
+    private fun sendConstructedState(isPlaying: Boolean, holdId: String?) {
+        val content = player.currentContent() ?: return
+        val positionMs = player.currentPositionMs() ?: return
+        send(
+            WatchPartyPlayback(
+                content = content,
+                isPlaying = isPlaying,
+                positionMs = positionMs,
+                source = player.currentSource(),
+            ),
+            holdId = holdId,
+        )
+    }
+
+    private fun send(playback: WatchPartyPlayback, holdId: String?) {
+        sentPlaying = playback.isPlaying
         transport.send(
             WatchPartyMessage.State(
                 senderId = localMemberId,
                 epoch = epoch,
                 seq = nextSeq++,
                 playback = playback,
+                holdId = holdId,
             ),
         )
     }
+
+    // Follower side.
 
     private fun requestState() {
         transport.send(WatchPartyMessage.StateRequest(senderId = localMemberId))
@@ -132,7 +353,66 @@ class WatchPartyCoordinator(
             abs(next.positionMs - expectedTargetPositionMs(previous)) > driftToleranceMs
         targetPlayback = next
         targetReceivedAtMs = nowMs()
+        if (message.holdId != targetHoldId) {
+            targetHoldId = message.holdId
+            heldSinceMs = if (message.holdId != null) nowMs() else null
+        }
+        onControllerContact()
         enforceTargetPlayback()
+        reportStallIfChanged()
+        acknowledgeHoldIfReady()
+    }
+
+    private fun acknowledgeHoldIfReady() {
+        val holdId = targetHoldId ?: return
+        if (holdId == acknowledgedHoldId) return
+        val target = targetPlayback ?: return
+        if (player.currentContent() != target.content) return
+        val local = player.currentPlayback() ?: return
+        if (abs(local.positionMs - target.positionMs) > driftToleranceMs) return
+        acknowledgedHoldId = holdId
+        transport.send(WatchPartyMessage.Ready(senderId = localMemberId, holdId = holdId))
+    }
+
+    private fun announceRoomWaitIfLong() {
+        val holdId = targetHoldId ?: return
+        val since = heldSinceMs ?: return
+        if (holdId != acknowledgedHoldId || holdId == announcedHoldId) return
+        if (nowMs() - since < ROOM_WAIT_ANNOUNCE_MS) return
+        announcedHoldId = holdId
+        listener.onWaitingForRoom()
+    }
+
+    private fun onControllerContact() {
+        lastContactAtMs = nowMs()
+        if (contactLost) {
+            contactLost = false
+            listener.onControllerContactChanged(lost = false)
+        }
+    }
+
+    private fun checkControllerContact() {
+        val target = targetPlayback ?: return
+        if (contactLost || nowMs() - lastContactAtMs < CONTACT_TIMEOUT_MS) return
+        contactLost = true
+        log.d { "No word from the controller; pausing until they're back" }
+        // Freeze where the controller should be by now; their next update lines us up again.
+        if (target.isPlaying) {
+            targetPlayback = target.copy(isPlaying = false, positionMs = expectedTargetPositionMs(target))
+            targetReceivedAtMs = nowMs()
+            targetJumped = true
+            enforceTargetPlayback()
+        }
+        listener.onControllerContactChanged(lost = true)
+    }
+
+    /** Tell the controller when our video stalls or recovers, so it can hold the room for us. */
+    private fun reportStallIfChanged() {
+        val target = targetPlayback ?: return
+        val isStalled = player.currentContent() != target.content || player.currentPlayback() == null
+        if (isStalled == reportedStall) return
+        reportedStall = isStalled
+        transport.send(WatchPartyMessage.LoadingChanged(senderId = localMemberId, isLoading = isStalled))
     }
 
     private fun measureCorrectionCost() {
@@ -209,6 +489,14 @@ class WatchPartyCoordinator(
         const val DEFAULT_SETTLE_WINDOW_MS = 1_500L
         private const val CORRECTION_COOLDOWN_MS = 6_000L
         private const val MAX_SEEK_LEAD_MS = 10_000L
+
+        // Three missed heartbeats.
+        private const val CONTACT_TIMEOUT_MS = 15_000L
+
+        // Followers send a keep-alive every heartbeat; three missed means they left the player.
+        private const val FOLLOWER_ACTIVE_MS = 15_000L
+        private const val STALL_GRACE_MS = 1_000L
+        private const val ROOM_WAIT_ANNOUNCE_MS = 2_000L
         private val log = Logger.withTag("WatchPartySync")
     }
 }

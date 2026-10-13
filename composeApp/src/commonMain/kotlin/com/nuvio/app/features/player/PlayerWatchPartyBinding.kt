@@ -29,13 +29,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.watch_party_contact_back
+import nuvio.composeapp.generated.resources.watch_party_contact_lost
+import nuvio.composeapp.generated.resources.watch_party_continuing_without
 import nuvio.composeapp.generated.resources.watch_party_default_controller
 import nuvio.composeapp.generated.resources.watch_party_finding_source
 import nuvio.composeapp.generated.resources.watch_party_follower_hint
 import nuvio.composeapp.generated.resources.watch_party_source_missing
+import nuvio.composeapp.generated.resources.watch_party_unknown_member
+import nuvio.composeapp.generated.resources.watch_party_waiting_for
+import nuvio.composeapp.generated.resources.watch_party_waiting_for_room
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 
 private const val WATCH_PARTY_HEARTBEAT_MS = 5_000L
+private const val WATCH_PARTY_TICK_MS = 1_000L
 
 // Players report the new position shortly after a seek, not at the moment it is requested.
 private const val WATCH_PARTY_SEEK_REPORT_DELAY_MS = 700L
@@ -62,11 +70,18 @@ internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? =
         null
     }
 
-/** Followers can't play or pause; tell them who can, and how to ask. Returns true when blocked. */
-internal fun PlayerScreenRuntime.blockWatchPartyFollowerAction(): Boolean {
-    if (!isWatchPartyFollower) return false
-    showWatchPartyFollowerHint()
-    return true
+/**
+ * In a party, the play/pause button goes through the room: followers are told who controls playback,
+ * and the controller's play waits until everyone is ready. Returns true when handled here.
+ */
+internal fun PlayerScreenRuntime.handleWatchPartyTogglePlayback(): Boolean {
+    val coordinator = watchParty?.coordinator ?: return false
+    if (!coordinator.isController) {
+        showWatchPartyFollowerHint()
+        return true
+    }
+    controlsVisible = true
+    return if (playbackSnapshot.isPlaying) coordinator.requestPause() else coordinator.requestPlay()
 }
 
 internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
@@ -76,7 +91,11 @@ internal fun PlayerScreenRuntime.notifyWatchPartySeek() {
     party.seekReportJob?.cancel()
     party.seekReportJob = scope.launch {
         delay(WATCH_PARTY_SEEK_REPORT_DELAY_MS)
-        party.coordinator.onLocalPlaybackChanged()
+        if (party.coordinator.isController) {
+            party.coordinator.onLocalSeek()
+        } else {
+            party.coordinator.onLocalPlaybackChanged()
+        }
     }
 }
 
@@ -114,6 +133,7 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
                     player = PlayerWatchPartyPort(this@BindWatchPartyEffects),
                     nowMs = { startMark.elapsedNow().inWholeMilliseconds },
                     controllerId = { party.control.controllerId.value },
+                    listener = PlayerWatchPartyEvents(this@BindWatchPartyEffects),
                 ),
             )
         }
@@ -158,6 +178,46 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
             coordinator.onHeartbeat()
         }
     }
+
+    LaunchedEffect(coordinator) {
+        while (true) {
+            delay(WATCH_PARTY_TICK_MS)
+            coordinator.onTick()
+        }
+    }
+}
+
+private class PlayerWatchPartyEvents(
+    private val runtime: PlayerScreenRuntime,
+) : WatchPartyCoordinator.Listener {
+    override fun onControllerContactChanged(lost: Boolean) {
+        val controllerId = WatchPartyRoomController.status.value.controllerId ?: return
+        runtime.showWatchPartyMembersToast(
+            if (lost) Res.string.watch_party_contact_lost else Res.string.watch_party_contact_back,
+            listOf(controllerId),
+        )
+    }
+
+    override fun onWaitingForMembers(memberIds: List<String>) {
+        runtime.showWatchPartyMembersToast(Res.string.watch_party_waiting_for, memberIds)
+    }
+
+    override fun onContinuedWithout(memberIds: List<String>) {
+        runtime.showWatchPartyMembersToast(Res.string.watch_party_continuing_without, memberIds)
+    }
+
+    override fun onWaitingForRoom() {
+        runtime.scope.launch { NuvioToastController.show(getString(Res.string.watch_party_waiting_for_room)) }
+    }
+}
+
+private fun PlayerScreenRuntime.showWatchPartyMembersToast(message: StringResource, memberIds: List<String>) {
+    val status = WatchPartyRoomController.status.value
+    scope.launch {
+        val unknown = getString(Res.string.watch_party_unknown_member)
+        val names = memberIds.map { status.nameOf(it) ?: unknown }.distinct().joinToString(", ")
+        NuvioToastController.show(getString(message, names))
+    }
 }
 
 private class PlayerWatchPartyPort(
@@ -181,9 +241,19 @@ private class PlayerWatchPartyPort(
             content = currentContent(),
             isPlaying = snapshot.isPlaying,
             positionMs = snapshot.positionMs,
-            source = runtime.currentWatchPartySource(),
+            source = currentSource(),
         )
     }
+
+    override fun currentPositionMs(): Long =
+        if (runtime.playerController != null && runtime.playerControllerSourceUrl == runtime.activeSourceUrl) {
+            runtime.playbackSnapshot.positionMs
+        } else {
+            // A new stream is still opening; it will start where it was told to.
+            runtime.activeInitialPositionMs
+        }
+
+    override fun currentSource(): WatchPartySource = runtime.currentWatchPartySource()
 
     override fun play() {
         runtime.shouldPlay = true

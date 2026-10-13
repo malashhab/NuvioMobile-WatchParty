@@ -17,6 +17,12 @@ interface WatchPartyPlayerPort {
     /** Live playback state, or null while the content is still loading. */
     fun currentPlayback(): WatchPartyPlayback?
 
+    /** Position even while loading, e.g. the target of a seek in progress; null when unknown. */
+    fun currentPositionMs(): Long?
+
+    /** Shareable description of the current stream, available even while loading. */
+    fun currentSource(): WatchPartySource?
+
     fun play()
     fun pause()
     fun seekTo(positionMs: Long)

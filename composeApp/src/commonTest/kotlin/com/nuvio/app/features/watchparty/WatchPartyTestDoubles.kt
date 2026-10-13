@@ -45,7 +45,14 @@ internal class FakeWatchPartyPlayer(
     /** False mimics the real player, which only switches once the user picks a source. */
     var switchesContentOnOpen = true
 
+    /** True mimics a source that has to load after every seek. */
+    var loadsAfterSeek = false
+
     override fun currentContent(): WatchPartyContent? = content
+
+    override fun currentPositionMs(): Long? = content?.let { positionMs }
+
+    override fun currentSource(): WatchPartySource? = null
 
     override fun currentPlayback(): WatchPartyPlayback? {
         val current = content ?: return null
@@ -65,6 +72,7 @@ internal class FakeWatchPartyPlayer(
 
     override fun seekTo(positionMs: Long) {
         this.positionMs = positionMs
+        if (loadsAfterSeek) isReady = false
         actions += "seek:$positionMs"
     }
 

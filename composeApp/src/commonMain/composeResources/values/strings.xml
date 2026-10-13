@@ -2483,6 +2483,12 @@
     <string name="watch_party_deny">Deny</string>
     <string name="watch_party_give_back">Give back control</string>
     <string name="watch_party_take_back">Take back control</string>
+    <string name="watch_party_contact_lost">Can't reach %1$s. Paused until they're back.</string>
+    <string name="watch_party_contact_back">Back in sync with %1$s.</string>
+    <string name="watch_party_waiting_for">Waiting for %1$s to load…</string>
+    <string name="watch_party_waiting_for_room">Ready. Waiting for the others…</string>
+    <string name="watch_party_continuing_without">Continuing without %1$s.</string>
+    <string name="watch_party_unknown_member">a member</string>
     <string name="watch_party_finding_source">Finding the same source…</string>
     <string name="watch_party_source_missing">You don't have the same source (%1$s). Pick one to keep watching together.</string>
     <string name="watch_party_status_connecting">Connecting…</string>

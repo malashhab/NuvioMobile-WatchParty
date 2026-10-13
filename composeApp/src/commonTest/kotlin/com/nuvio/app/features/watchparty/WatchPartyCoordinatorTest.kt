@@ -15,13 +15,37 @@ class WatchPartyCoordinatorTest {
     private val hostConnection = hub.connect()
     private val guestConnection = hub.connect()
 
-    private val host = coordinator("host", hostConnection, hostPlayer, epoch = "host-epoch")
-    private val guest = coordinator("guest", guestConnection, guestPlayer)
+    private val hostEvents = RecordingListener()
+    private val guestEvents = RecordingListener()
+
+    private val host = coordinator("host", hostConnection, hostPlayer, hostEvents, epoch = "host-epoch")
+    private val guest = coordinator("guest", guestConnection, guestPlayer, guestEvents)
+
+    private class RecordingListener : WatchPartyCoordinator.Listener {
+        val events = mutableListOf<String>()
+
+        override fun onControllerContactChanged(lost: Boolean) {
+            events += if (lost) "contact-lost" else "contact-back"
+        }
+
+        override fun onWaitingForMembers(memberIds: List<String>) {
+            events += "waiting:$memberIds"
+        }
+
+        override fun onContinuedWithout(memberIds: List<String>) {
+            events += "continued-without:$memberIds"
+        }
+
+        override fun onWaitingForRoom() {
+            events += "waiting-for-room"
+        }
+    }
 
     private fun coordinator(
         memberId: String,
         transport: WatchPartyTransport,
         player: WatchPartyPlayerPort,
+        listener: WatchPartyCoordinator.Listener,
         epoch: String = "$memberId-epoch",
     ) = WatchPartyCoordinator(
         localMemberId = memberId,
@@ -29,6 +53,7 @@ class WatchPartyCoordinatorTest {
         player = player,
         nowMs = { now },
         controllerId = { controller },
+        listener = listener,
         epoch = epoch,
     )
 
@@ -278,6 +303,206 @@ class WatchPartyCoordinatorTest {
         host.onLocalPlaybackChanged()
 
         assertEquals(listOf("seek:200000"), guestPlayer.actions)
+    }
+
+    @Test
+    fun followerPausesWhenControllerGoesSilentAndResumesWhenBack() {
+        host.start()
+        guest.start()
+        guestPlayer.actions.clear()
+
+        now = 10_000L
+        guest.onTick()
+        assertTrue(guestEvents.events.isEmpty())
+
+        now = 16_000L
+        guestPlayer.positionMs = 76_000L
+        guest.onTick()
+        assertEquals(listOf("pause"), guestPlayer.actions)
+        assertEquals(listOf("contact-lost"), guestEvents.events)
+
+        now = 17_000L
+        hostPlayer.positionMs = 77_000L
+        host.onHeartbeat()
+
+        assertEquals(listOf("pause", "play"), guestPlayer.actions)
+        assertEquals(listOf("contact-lost", "contact-back"), guestEvents.events)
+    }
+
+    @Test
+    fun keepAliveWhileControllerLoadsIsNotMistakenForSilence() {
+        host.start()
+        guest.start()
+        hostPlayer.isReady = false
+
+        listOf(5_000L, 10_000L, 15_000L).forEach {
+            now = it
+            host.onHeartbeat()
+        }
+        now = 16_000L
+        guest.onTick()
+
+        assertTrue(guestEvents.events.isEmpty())
+    }
+
+    @Test
+    fun controllerSeekHoldsTheRoomUntilEveryoneIsReadyThenAllPlay() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.actions.clear()
+        guestPlayer.loadsAfterSeek = true
+
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+        assertEquals(listOf("pause"), hostPlayer.actions)
+        assertEquals(listOf("seek:300000", "pause"), guestPlayer.actions)
+
+        now = 4_500L
+        host.onTick()
+        assertEquals(listOf("waiting:[guest]"), hostEvents.events)
+
+        now = 5_000L
+        guestPlayer.isReady = true
+        guest.onLocalPlaybackChanged()
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+        assertEquals(listOf("seek:300000", "pause", "play"), guestPlayer.actions)
+    }
+
+    @Test
+    fun followerStallHoldsEveryoneUntilItRecovers() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.actions.clear()
+
+        now = 2_000L
+        guestPlayer.isReady = false
+        guest.onLocalPlaybackChanged()
+        now = 2_500L
+        host.onTick()
+        assertTrue(hostPlayer.actions.isEmpty())
+
+        now = 3_100L
+        host.onTick()
+        assertEquals(listOf("pause"), hostPlayer.actions)
+
+        now = 4_000L
+        guestPlayer.isReady = true
+        guest.onLocalPlaybackChanged()
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+        assertEquals(listOf("pause", "play"), guestPlayer.actions)
+    }
+
+    @Test
+    fun briefHiccupDoesNotHoldTheRoom() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+
+        now = 2_000L
+        guestPlayer.isReady = false
+        guest.onLocalPlaybackChanged()
+        now = 2_500L
+        guestPlayer.isReady = true
+        guest.onLocalPlaybackChanged()
+        now = 3_500L
+        host.onTick()
+
+        assertTrue(hostPlayer.actions.isEmpty())
+    }
+
+    @Test
+    fun controllerStallHoldsFollowersUntilTheControllerRecovers() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.actions.clear()
+
+        now = 2_000L
+        hostPlayer.isReady = false
+        host.onLocalPlaybackChanged()
+        assertEquals(listOf("pause"), guestPlayer.actions)
+
+        // The follower is ready and waiting; after a moment it says so.
+        now = 4_500L
+        guest.onTick()
+        assertEquals(listOf("waiting-for-room"), guestEvents.events)
+
+        now = 5_000L
+        hostPlayer.isReady = true
+        host.onLocalPlaybackChanged()
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+        assertEquals(listOf("pause", "play"), guestPlayer.actions)
+    }
+
+    @Test
+    fun roomContinuesWithoutAMemberWhoNeverGetsReadyAndDoesNotWaitAgain() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.loadsAfterSeek = true
+
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+        // Still in the player, so still waited for.
+        now = 12_000L
+        guest.onHeartbeat()
+        now = 22_000L
+        guest.onHeartbeat()
+
+        now = 32_000L
+        host.onTick()
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+        assertEquals(listOf("continued-without:[guest]"), hostEvents.events)
+
+        now = 34_000L
+        host.onTick()
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun controllerPressingPlayDuringAHoldStopsWaiting() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.loadsAfterSeek = true
+
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+        now = 3_000L
+        assertTrue(host.requestPlay())
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun memberWhoLeftThePlayerIsNotWaitedFor() {
+        host.start()
+        guest.start()
+        guest.stop()
+        hostPlayer.actions.clear()
+
+        now = 20_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun followersCannotStartOrStopTheRoom() {
+        host.start()
+        guest.start()
+
+        assertFalse(guest.requestPlay())
+        assertFalse(guest.requestPause())
     }
 
     @Test

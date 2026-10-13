@@ -118,7 +118,11 @@ class WatchPartyControl(
                 if (isOwner && !isController) announceController(_controllerId.value)
                 false
             }
-            is WatchPartyMessage.State -> false
+            is WatchPartyMessage.State,
+            is WatchPartyMessage.KeepAlive,
+            is WatchPartyMessage.LoadingChanged,
+            is WatchPartyMessage.Ready,
+            -> false
         }
     }
 
