@@ -68,7 +68,7 @@ internal class FakeWatchPartyPlayer(
         actions += "seek:$positionMs"
     }
 
-    override fun openContent(content: WatchPartyContent, positionMs: Long) {
+    override fun openContent(content: WatchPartyContent, positionMs: Long, source: WatchPartySource?) {
         actions += "open:${content.videoId}@$positionMs"
         if (!switchesContentOnOpen) return
         this.content = content

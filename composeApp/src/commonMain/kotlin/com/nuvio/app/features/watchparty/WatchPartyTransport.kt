@@ -20,5 +20,5 @@ interface WatchPartyPlayerPort {
     fun play()
     fun pause()
     fun seekTo(positionMs: Long)
-    fun openContent(content: WatchPartyContent, positionMs: Long)
+    fun openContent(content: WatchPartyContent, positionMs: Long, source: WatchPartySource?)
 }

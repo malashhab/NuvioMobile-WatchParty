@@ -2483,6 +2483,8 @@
     <string name="watch_party_deny">Deny</string>
     <string name="watch_party_give_back">Give back control</string>
     <string name="watch_party_take_back">Take back control</string>
+    <string name="watch_party_finding_source">Finding the same source…</string>
+    <string name="watch_party_source_missing">You don't have the same source (%1$s). Pick one to keep watching together.</string>
     <string name="watch_party_status_connecting">Connecting…</string>
     <string name="watch_party_status_connected">Connected</string>
     <string name="watch_party_status_reconnecting">Reconnecting…</string>

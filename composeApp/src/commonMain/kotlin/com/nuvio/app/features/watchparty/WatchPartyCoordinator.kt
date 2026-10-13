@@ -158,7 +158,7 @@ class WatchPartyCoordinator(
             if (requestedContent != target.content) {
                 requestedContent = target.content
                 log.d { "Opening ${target.content.videoId} to follow the controller" }
-                player.openContent(target.content, expectedPositionMs)
+                player.openContent(target.content, expectedPositionMs, target.source)
                 startSettling()
             }
             return

@@ -16,11 +16,77 @@ data class WatchPartyContent(
     val episodeNumber: Int? = null,
 )
 
+/**
+ * Describes the controller's stream well enough for followers to find the same one among their own
+ * sources. Never includes the stream URL or headers, which can carry private debrid tokens.
+ */
+@Serializable
+data class WatchPartySource(
+    val addonId: String? = null,
+    val addonName: String? = null,
+    val name: String? = null,
+    val description: String? = null,
+    val infoHash: String? = null,
+    val fileIdx: Int? = null,
+    val filename: String? = null,
+    val videoSize: Long? = null,
+    val bingeGroup: String? = null,
+) {
+    /** Short label for messages, e.g. "Torrentio 1080p". */
+    val displayLabel: String
+        get() = (name ?: addonName).orEmpty().replace(Regex("\\s+"), " ").trim().take(80)
+
+    companion object {
+        /**
+         * Builds a fingerprint that is safe to share. Addon ids embed the install URL, which for debrid
+         * addons carries the user's API key, so only the public manifest id is kept. Any other field that
+         * contains a URL is dropped as well.
+         */
+        fun shareable(
+            addonId: String?,
+            addonName: String?,
+            name: String?,
+            description: String?,
+            infoHash: String? = null,
+            fileIdx: Int? = null,
+            filename: String? = null,
+            videoSize: Long? = null,
+            bingeGroup: String? = null,
+        ): WatchPartySource =
+            WatchPartySource(
+                addonId = shareableAddonId(addonId),
+                addonName = addonName.withoutUrl(),
+                name = name.withoutUrl(),
+                description = description.withoutUrl(),
+                infoHash = infoHash.withoutUrl(),
+                fileIdx = fileIdx,
+                filename = filename.withoutUrl(),
+                videoSize = videoSize,
+                bingeGroup = bingeGroup.withoutUrl(),
+            )
+
+        /** "addon:<manifest id>:<install url>" becomes "addon:<manifest id>"; other URL-bearing ids are dropped. */
+        internal fun shareableAddonId(addonId: String?): String? {
+            val id = addonId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            if (id.startsWith(ADDON_ID_PREFIX)) {
+                val manifestId = id.removePrefix(ADDON_ID_PREFIX).substringBefore(':')
+                return manifestId.takeIf { it.isNotEmpty() }?.let { ADDON_ID_PREFIX + it }
+            }
+            return id.withoutUrl()
+        }
+
+        private fun String?.withoutUrl(): String? = this?.takeUnless { "://" in it }
+
+        private const val ADDON_ID_PREFIX = "addon:"
+    }
+}
+
 @Serializable
 data class WatchPartyPlayback(
     val content: WatchPartyContent,
     val isPlaying: Boolean,
     val positionMs: Long,
+    val source: WatchPartySource? = null,
 )
 
 data class WatchPartyRoom(
