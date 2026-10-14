@@ -149,7 +149,7 @@ androidComponents {
     }
     // This fork's releases install next to the official Nuvio app instead of replacing it.
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.applicationId.set("com.nuvio.watchparty.app")
+        variant.applicationId.set("com.nuviowatchparty.app")
     }
 }
 
