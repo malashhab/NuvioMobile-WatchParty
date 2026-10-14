@@ -65,6 +65,8 @@ interface NuvioPlayerBridge {
     fun clearExternalSubtitle()
     fun clearExternalSubtitleAndSelect(trackId: Int)
     fun setSubtitleDelayMs(delayMs: Int)
+    /** Subtitle speed for subtitles made for another frame rate; 1.0 is normal. */
+    fun setSubtitleSpeed(speed: Double)
     fun applySubtitleStyle(
         textColor: String,
         backgroundColor: String,

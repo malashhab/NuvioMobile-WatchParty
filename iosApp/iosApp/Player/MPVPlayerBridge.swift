@@ -163,6 +163,7 @@ final class MPVPlayerBridgeImpl: NSObject, NuvioPlayerBridge {
     func clearExternalSubtitle() { playerVC?.removeExternalSubtitles() }
     func clearExternalSubtitleAndSelect(trackId: Int32) { playerVC?.removeExternalSubtitlesAndSelect(Int(trackId)) }
     func setSubtitleDelayMs(delayMs: Int32) { playerVC?.setSubtitleDelayMs(Int(delayMs)) }
+    func setSubtitleSpeed(speed: Double) { playerVC?.setSubtitleSpeed(speed) }
     func applySubtitleStyle(
         textColor: String,
         backgroundColor: String,
@@ -845,6 +846,13 @@ final class MPVPlayerViewController: UIViewController {
         guard mpv != nil else { return }
         var delaySeconds = Double(max(-60_000, min(60_000, delayMs))) / 1000.0
         checkError(mpv_set_property(mpv, "sub-delay", MPV_FORMAT_DOUBLE, &delaySeconds))
+    }
+
+    func setSubtitleSpeed(_ speed: Double) {
+        guard mpv != nil else { return }
+        // mpv shows each subtitle line at speed × its time + sub-delay.
+        var value = max(0.1, min(10.0, speed))
+        checkError(mpv_set_property(mpv, "sub-speed", MPV_FORMAT_DOUBLE, &value))
     }
 
     func applySubtitleStyle(
