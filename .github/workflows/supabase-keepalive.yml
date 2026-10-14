@@ -1,0 +1,36 @@
+name: Supabase keep-awake
+
+# Free Supabase projects pause after a week without database activity. Watch Party only uses
+# Realtime, which doesn't count, so this calls a tiny database function every few days.
+# Needs the keep_alive() SQL function and the WATCH_PARTY_SUPABASE_URL / WATCH_PARTY_SUPABASE_KEY secrets.
+
+on:
+  schedule:
+    - cron: "17 4 */3 * *" # every 3 days at 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Query the Watch Party database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call keep_alive()
+        env:
+          SUPABASE_URL: ${{ secrets.WATCH_PARTY_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.WATCH_PARTY_SUPABASE_KEY }}
+        run: |
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_KEY}" ]; then
+            echo "::error::Add the WATCH_PARTY_SUPABASE_URL and WATCH_PARTY_SUPABASE_KEY repository secrets."
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 30 \
+            -X POST "${SUPABASE_URL%/}/rest/v1/rpc/keep_alive" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+          echo
+          echo "Supabase project is awake."
