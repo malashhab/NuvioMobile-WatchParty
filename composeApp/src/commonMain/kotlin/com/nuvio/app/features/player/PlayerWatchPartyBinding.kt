@@ -70,13 +70,8 @@ internal class PlayerWatchPartyState(
 internal val PlayerScreenRuntime.isWatchPartyFollower: Boolean
     get() = watchParty?.coordinator?.isController == false
 
-/** Null hides the toolbar button, e.g. in builds without a Watch Party server configured. */
-internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? =
-    if (WatchPartyRoomController.isConfigured) {
-        { showWatchPartyDialog = true }
-    } else {
-        null
-    }
+/** Always available: guests join through invites even without a server of their own. */
+internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? = { showWatchPartyDialog = true }
 
 /**
  * In a party, the play/pause button goes through the room: followers are told who controls playback,

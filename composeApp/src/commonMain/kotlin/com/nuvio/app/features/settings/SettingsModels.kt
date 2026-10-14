@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.watch_party_settings_title
 import nuvio.composeapp.generated.resources.compose_settings_category_about
 import nuvio.composeapp.generated.resources.compose_settings_category_general
 import nuvio.composeapp.generated.resources.compose_settings_page_account
@@ -144,6 +145,11 @@ internal enum class SettingsPage(
     ),
     Integrations(
         titleRes = Res.string.compose_settings_page_integrations,
+        category = SettingsCategory.General,
+        parentPage = Root,
+    ),
+    WatchParty(
+        titleRes = Res.string.watch_party_settings_title,
         category = SettingsCategory.General,
         parentPage = Root,
     ),

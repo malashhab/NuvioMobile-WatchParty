@@ -72,6 +72,7 @@ import com.nuvio.app.core.ui.NuvioFloatingPrompt
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.features.watchparty.WatchPartyInvite
 import com.nuvio.app.features.watchparty.handleWatchPartyInvite
 import com.nuvio.app.core.ui.NuvioToastHost
 import com.nuvio.app.core.ui.PosterZoomAnchor
@@ -757,7 +758,7 @@ internal fun MainAppContent(
                     }
 
                     is AppDeepLink.WatchPartyJoin -> {
-                        handleWatchPartyInvite(deepLink.code)
+                        handleWatchPartyInvite(WatchPartyInvite(code = deepLink.code, server = deepLink.server))
                         AppDeepLinkRepository.markConsumed(deepLink)
                     }
 

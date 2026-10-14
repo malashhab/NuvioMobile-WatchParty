@@ -705,6 +705,7 @@ private fun MobileSettingsScreen(
                             onNotificationsClick = { onPageChange(SettingsPage.Notifications) },
                             onContentDiscoveryClick = { onPageChange(SettingsPage.ContentDiscovery) },
                             onIntegrationsClick = { onPageChange(SettingsPage.Integrations) },
+                            onWatchPartyClick = { onPageChange(SettingsPage.WatchParty) },
                             onTrackingClick = { onPageChange(SettingsPage.TraktAuthentication) },
                             onSupportersContributorsClick = onSupportersContributorsClick,
                             onLicensesAttributionsClick = onLicensesAttributionsClick,
@@ -834,6 +835,7 @@ private fun MobileSettingsScreen(
                     onMdbListClick = { onPageChange(SettingsPage.MdbListRatings) },
                     onDebridClick = { onPageChange(SettingsPage.Debrid) },
                 )
+                SettingsPage.WatchParty -> watchPartySettingsContent(isTablet = false)
                 SettingsPage.TmdbEnrichment -> tmdbSettingsContent(
                     isTablet = false,
                     settings = tmdbSettings,
@@ -1137,6 +1139,7 @@ private fun TabletSettingsScreen(
                                 onNotificationsClick = { openInlinePage(SettingsPage.Notifications) },
                                 onContentDiscoveryClick = { openInlinePage(SettingsPage.ContentDiscovery) },
                                 onIntegrationsClick = { openInlinePage(SettingsPage.Integrations) },
+                                onWatchPartyClick = { openInlinePage(SettingsPage.WatchParty) },
                                 onTrackingClick = { openInlinePage(SettingsPage.TraktAuthentication) },
                                 onSupportersContributorsClick = { openInlinePage(SettingsPage.SupportersContributors) },
                                 onLicensesAttributionsClick = { openInlinePage(SettingsPage.LicensesAttributions) },
@@ -1270,6 +1273,7 @@ private fun TabletSettingsScreen(
                         onMdbListClick = { onPageChange(SettingsPage.MdbListRatings) },
                         onDebridClick = { onPageChange(SettingsPage.Debrid) },
                     )
+                    SettingsPage.WatchParty -> watchPartySettingsContent(isTablet = true)
                     SettingsPage.TmdbEnrichment -> tmdbSettingsContent(
                         isTablet = true,
                         settings = tmdbSettings,

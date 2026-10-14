@@ -39,7 +39,10 @@ import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.SurfaceEdge
 import com.nuvio.app.core.ui.nuvio
 import nuvio.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+
+private const val MAX_INVITE_INPUT_LENGTH = 2_000
 
 // The player is always landscape, where a single tall column runs off the screen.
 private val RoomDialogMaxWidth = 760.dp
@@ -147,23 +150,61 @@ private fun DialogTitle() {
 
 @Composable
 private fun JoinOrCreateContent(onDismiss: () -> Unit) {
-    var codeInput by remember { mutableStateOf("") }
-    var invalidCode by remember { mutableStateOf(false) }
+    var input by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<StringResource?>(null) }
+    // An invite for someone else's server waits for a yes before we connect to it.
+    var inviteToConfirm by remember { mutableStateOf<WatchPartyInvite?>(null) }
+    val canHost = remember { WatchPartyRoomController.canHost }
     val tokens = MaterialTheme.nuvio
+
+    val pending = inviteToConfirm
+    if (pending?.server != null) {
+        Text(
+            text = stringResource(
+                Res.string.watch_party_join_other_server,
+                WatchPartyRoomCode.format(pending.code),
+                pending.server.displayHost,
+            ),
+            color = tokens.colors.textPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = stringResource(Res.string.watch_party_join_other_server_hint),
+            color = tokens.colors.textSecondary,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        DialogButtons {
+            DialogButton(text = stringResource(Res.string.action_cancel), onClick = { inviteToConfirm = null })
+            DialogButton(
+                text = stringResource(Res.string.watch_party_join),
+                onClick = { WatchPartyRoomController.join(pending) },
+                style = DialogButtonStyle.Primary,
+            )
+        }
+        return
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s8)) {
         NuvioInputField(
-            value = codeInput,
+            value = input,
             onValueChange = {
-                codeInput = it.take(WatchPartyRoomCode.LENGTH + 1).uppercase()
-                invalidCode = false
+                // Room for a whole pasted invite message, not just the code.
+                input = it.take(MAX_INVITE_INPUT_LENGTH)
+                problem = null
             },
             placeholder = stringResource(Res.string.watch_party_code_placeholder),
         )
-        if (invalidCode) {
+        problem?.let {
             Text(
-                text = stringResource(Res.string.watch_party_invalid_code),
+                text = stringResource(it),
                 color = tokens.colors.danger,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (!canHost) {
+            Text(
+                text = stringResource(Res.string.watch_party_no_server_hint),
+                color = tokens.colors.textSecondary,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -171,13 +212,25 @@ private fun JoinOrCreateContent(onDismiss: () -> Unit) {
     DialogButtons {
         DialogButton(
             text = stringResource(Res.string.watch_party_join),
-            onClick = { invalidCode = !WatchPartyRoomController.joinRoom(codeInput) },
+            onClick = {
+                val invite = parseWatchPartyInvite(input)
+                when {
+                    invite == null -> problem = Res.string.watch_party_invalid_code
+                    invite.server != null && invite.server != WatchPartyServerSettings.hostingServer() ->
+                        inviteToConfirm = invite
+                    WatchPartyRoomController.join(invite) == WatchPartyJoinResult.NeedsServer ->
+                        problem = Res.string.watch_party_needs_invite
+                }
+            },
+            style = if (canHost) DialogButtonStyle.Secondary else DialogButtonStyle.Primary,
         )
-        DialogButton(
-            text = stringResource(Res.string.watch_party_create),
-            onClick = WatchPartyRoomController::createRoom,
-            style = DialogButtonStyle.Primary,
-        )
+        if (canHost) {
+            DialogButton(
+                text = stringResource(Res.string.watch_party_create),
+                onClick = { WatchPartyRoomController.createRoom() },
+                style = DialogButtonStyle.Primary,
+            )
+        }
     }
     DialogButtons {
         DialogButton(text = stringResource(Res.string.watch_party_close), onClick = onDismiss)
@@ -203,7 +256,14 @@ private fun RoomOverview(status: WatchPartyStatus, code: String) {
         fontWeight = FontWeight.Bold,
         letterSpacing = 4.sp,
     )
-    InviteButtons(code)
+    InviteButtons(code = code, server = status.server)
+    status.server?.let { server ->
+        Text(
+            text = stringResource(Res.string.watch_party_server_label, server.displayHost),
+            color = tokens.colors.textMuted,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
     Text(
         text = stringResource(
             when (status.connection) {
@@ -239,19 +299,24 @@ private fun RoomPeople(status: WatchPartyStatus, onDismiss: () -> Unit) {
 }
 
 
+/** Both buttons hand out the whole invite, including the server, so guests need no server of their own. */
 @Composable
-private fun InviteButtons(code: String) {
+private fun InviteButtons(code: String, server: WatchPartyServer?) {
     val clipboard = LocalClipboardManager.current
     val share = rememberTextSharer()
     val formatted = WatchPartyRoomCode.format(code)
     val copiedMessage = stringResource(Res.string.watch_party_code_copied)
-    val inviteText = stringResource(Res.string.watch_party_invite_message, formatted, buildWatchPartyInviteUrl(code))
+    val inviteText = stringResource(
+        Res.string.watch_party_invite_message,
+        formatted,
+        buildWatchPartyInviteUrl(code, server),
+    )
 
     DialogButtons {
         DialogButton(
             text = stringResource(Res.string.watch_party_copy_code),
             onClick = {
-                clipboard.setText(AnnotatedString(formatted))
+                clipboard.setText(AnnotatedString(inviteText))
                 NuvioToastController.show(copiedMessage)
             },
         )

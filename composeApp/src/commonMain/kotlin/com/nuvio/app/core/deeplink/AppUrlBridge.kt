@@ -3,7 +3,8 @@ package com.nuvio.app.core.deeplink
 import com.nuvio.app.core.tracking.ensureTrackingProvidersRegistered
 import com.nuvio.app.features.player.infusePlaybackCallbacks
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
-import com.nuvio.app.features.watchparty.WatchPartyRoomCode
+import com.nuvio.app.features.watchparty.WatchPartyServer
+import com.nuvio.app.features.watchparty.parseWatchPartyInvite
 import io.ktor.http.Url
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ internal sealed interface AppDeepLink {
 
     data class WatchPartyJoin(
         val code: String,
+        val server: WatchPartyServer? = null,
     ) : AppDeepLink
 }
 
@@ -98,10 +100,7 @@ internal fun parseAppDeepLink(url: String): AppDeepLink? {
 
         "downloads" -> AppDeepLink.Downloads
 
-        "watchparty" -> {
-            val input = pathSegments.firstOrNull() ?: firstParameter(parsedUrl, "code")
-            input?.let(WatchPartyRoomCode::normalize)?.let(AppDeepLink::WatchPartyJoin)
-        }
+        "watchparty" -> parseWatchPartyInvite(url)?.let { AppDeepLink.WatchPartyJoin(code = it.code, server = it.server) }
 
         "auth" -> null
 

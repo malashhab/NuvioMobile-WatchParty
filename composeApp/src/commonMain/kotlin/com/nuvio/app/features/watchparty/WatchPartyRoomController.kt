@@ -18,8 +18,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val CONNECT_TIMEOUT_MS = 15_000L
+private const val SERVER_TEST_TIMEOUT_MS = 10_000L
 private const val DEFAULT_MEMBER_NAME = "Guest"
 
 enum class WatchPartyConnection {
@@ -47,6 +51,8 @@ data class WatchPartyStatus(
     val requestState: ControlRequestState = ControlRequestState.None,
     val connection: WatchPartyConnection = WatchPartyConnection.Disconnected,
     val connectFailed: Boolean = false,
+    /** The server this room lives on; invites carry it so guests need no server of their own. */
+    val server: WatchPartyServer? = null,
 ) {
     val isController: Boolean
         get() = localMemberId != null && localMemberId == controllerId
@@ -54,9 +60,16 @@ data class WatchPartyStatus(
     fun nameOf(memberId: String?): String? = members.firstOrNull { it.memberId == memberId }?.name
 }
 
+enum class WatchPartyJoinResult {
+    Joined,
+
+    /** A bare room code, but this device has no server of its own; the host's invite is needed. */
+    NeedsServer,
+}
+
 /**
- * Creates, joins and leaves rooms. Uses its own Supabase project (WatchPartyConfig), separate
- * from the app's account server, so it never touches account data.
+ * Creates, joins and leaves rooms. Rooms live on a Supabase project of the host's choosing (see
+ * [WatchPartyServerSettings]), separate from the app's account server, so they never touch account data.
  */
 object WatchPartyRoomController {
     private val log = Logger.withTag("WatchParty")
@@ -71,15 +84,35 @@ object WatchPartyRoomController {
     private val _status = MutableStateFlow(WatchPartyStatus())
     val status: StateFlow<WatchPartyStatus> = _status.asStateFlow()
 
-    val isConfigured: Boolean
-        get() = WatchPartyConfig.SUPABASE_URL.isNotBlank() && WatchPartyConfig.SUPABASE_KEY.isNotBlank()
+    /** Whether this device can create rooms; without a server it can still join through invites. */
+    val canHost: Boolean
+        get() = WatchPartyServerSettings.hostingServer() != null
 
-    private val client: SupabaseClient by lazy {
-        createSupabaseClient(
-            supabaseUrl = WatchPartyConfig.SUPABASE_URL,
-            supabaseKey = WatchPartyConfig.SUPABASE_KEY,
-        ) {
+    // One client per server; switching servers replaces it.
+    private var client: SupabaseClient? = null
+    private var clientServer: WatchPartyServer? = null
+
+    private fun clientFor(server: WatchPartyServer): SupabaseClient {
+        client?.takeIf { clientServer == server }?.let { return it }
+        client?.let { previous -> scope.launch { closeQuietly(previous) } }
+        return createRealtimeClient(server).also {
+            client = it
+            clientServer = server
+        }
+    }
+
+    private fun createRealtimeClient(server: WatchPartyServer): SupabaseClient =
+        createSupabaseClient(supabaseUrl = server.url, supabaseKey = server.key) {
             install(Realtime)
+        }
+
+    private suspend fun closeQuietly(client: SupabaseClient) {
+        try {
+            client.close()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Closing is best effort.
         }
     }
 
@@ -93,15 +126,36 @@ object WatchPartyRoomController {
     /** The current room's chat, or null outside a room. */
     val chat: StateFlow<WatchPartyChat?> = _chat.asStateFlow()
 
-    fun createRoom() {
-        open(code = WatchPartyRoomCode.generate(), isOwner = true)
+    /** Returns false when this device has no server to host on. */
+    fun createRoom(): Boolean {
+        val server = WatchPartyServerSettings.hostingServer() ?: return false
+        open(code = WatchPartyRoomCode.generate(), isOwner = true, server = server)
+        return true
     }
 
-    /** Returns false when [input] is not a valid room code. */
-    fun joinRoom(input: String): Boolean {
-        val code = WatchPartyRoomCode.normalize(input) ?: return false
-        open(code = code, isOwner = false)
-        return true
+    /** Joins on the invite's server, or our own when the invite is just a code. */
+    fun join(invite: WatchPartyInvite): WatchPartyJoinResult {
+        val server = invite.server ?: WatchPartyServerSettings.hostingServer() ?: return WatchPartyJoinResult.NeedsServer
+        open(code = invite.code, isOwner = false, server = server)
+        return WatchPartyJoinResult.Joined
+    }
+
+    /** True when the server accepts a Realtime connection with this key, checked with a throwaway channel. */
+    @OptIn(ExperimentalUuidApi::class)
+    suspend fun testServer(server: WatchPartyServer): Boolean {
+        val testClient = createRealtimeClient(server)
+        return try {
+            withTimeoutOrNull(SERVER_TEST_TIMEOUT_MS) {
+                testClient.channel("watch-party-test-${Uuid.random()}").subscribe(blockUntilSubscribed = true)
+                true
+            } ?: false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        } finally {
+            withContext(NonCancellable) { closeQuietly(testClient) }
+        }
     }
 
     fun requestControl() {
@@ -132,10 +186,11 @@ object WatchPartyRoomController {
         transport = null
         control = null
         _chat.value = null
+        val closingClient = client
         channel?.let { closing ->
             scope.launch {
                 try {
-                    client.realtime.removeChannel(closing)
+                    closingClient?.realtime?.removeChannel(closing)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -148,9 +203,8 @@ object WatchPartyRoomController {
     }
 
     @OptIn(ExperimentalUuidApi::class)
-    private fun open(code: String, isOwner: Boolean) {
+    private fun open(code: String, isOwner: Boolean, server: WatchPartyServer) {
         leave()
-        if (!isConfigured) return
 
         val room = WatchPartyRoom(code = code, ownerMemberId = ownerMemberId(code))
         // Phase 2 shortcut: the owner's id is derived from the code, so anyone with the code could
@@ -158,7 +212,7 @@ object WatchPartyRoomController {
         val localMemberId = if (isOwner) room.ownerMemberId else "guest-${Uuid.random()}"
         val localMember = WatchPartyMember(memberId = localMemberId, name = localMemberName())
 
-        val roomChannel = client.channel("watch-party-$code") {
+        val roomChannel = clientFor(server).channel("watch-party-$code") {
             presence { key = localMemberId }
         }
         val connection = MutableStateFlow(WatchPartyConnection.Connecting)
@@ -195,6 +249,7 @@ object WatchPartyRoomController {
             isOwner = isOwner,
             controllerId = room.ownerMemberId,
             connection = WatchPartyConnection.Connecting,
+            server = server,
         )
 
         networkTransport.start()

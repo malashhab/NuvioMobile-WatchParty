@@ -1,5 +1,6 @@
 package com.nuvio.app.core.deeplink
 
+import com.nuvio.app.features.watchparty.WatchPartyServer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -19,6 +20,17 @@ class AppUrlBridgeTest {
         assertEquals(
             AppDeepLink.WatchPartyJoin(code = "K7QMP4XD"),
             parseAppDeepLink("nuvio://watchparty?code=K7QMP4XD"),
+        )
+    }
+
+    @Test
+    fun `parses watch party invite with the host's server`() {
+        assertEquals(
+            AppDeepLink.WatchPartyJoin(
+                code = "K7QMP4XD",
+                server = WatchPartyServer(url = "https://abcd1234.supabase.co", key = "sb_publishable_x"),
+            ),
+            parseAppDeepLink("nuvio://watchparty/K7QMP4XD?server=https%3A%2F%2Fabcd1234.supabase.co&key=sb_publishable_x"),
         )
     }
 
