@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src=".github/assets/nuvio-wp-logo.svg" alt="Nuvio WP logo: a pixel-art cat napping on an old TV" width="160" />
+  <img src=".github/assets/nuvio-wp-logo.svg" alt="Nuvio WP logo: two screens with friends watching together" width="160" />
 
   <h1>Nuvio WP</h1>
 
