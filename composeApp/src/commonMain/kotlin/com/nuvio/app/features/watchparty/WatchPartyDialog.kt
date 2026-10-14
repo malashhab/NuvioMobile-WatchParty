@@ -1,10 +1,18 @@
 package com.nuvio.app.features.watchparty
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,35 +24,125 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.DialogButton
 import com.nuvio.app.core.ui.DialogButtonStyle
 import com.nuvio.app.core.ui.DialogButtons
-import com.nuvio.app.core.ui.DialogSurface
 import com.nuvio.app.core.ui.NuvioInputField
 import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.SurfaceEdge
 import com.nuvio.app.core.ui.nuvio
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+
+// The player is always landscape, where a single tall column runs off the screen.
+private val RoomDialogMaxWidth = 760.dp
+private val TwoColumnMinWidth = 600.dp
 
 @Composable
 internal fun WatchPartyDialog(onDismiss: () -> Unit) {
     val status by WatchPartyRoomController.status.collectAsStateWithLifecycle()
     val code = status.code
 
-    DialogSurface(
-        onDismissRequest = onDismiss,
-        title = stringResource(Res.string.watch_party_title),
-        message = if (code == null) stringResource(Res.string.watch_party_intro) else null,
-    ) {
-        if (code == null) {
+    if (code == null) {
+        WatchPartyDialogFrame(
+            onDismiss = onDismiss,
+            widthLimit = MaterialTheme.nuvio.components.dialogMaxWidth,
+        ) {
+            DialogTitle()
+            Text(
+                text = stringResource(Res.string.watch_party_intro),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.nuvio.colors.textSecondary,
+            )
             JoinOrCreateContent(onDismiss = onDismiss)
-        } else {
-            RoomContent(status = status, code = code, onDismiss = onDismiss)
+        }
+    } else {
+        WatchPartyDialogFrame(
+            onDismiss = onDismiss,
+            widthLimit = RoomDialogMaxWidth,
+            secondColumn = { RoomPeople(status = status, onDismiss = onDismiss) },
+        ) {
+            DialogTitle()
+            RoomOverview(status = status, code = code)
         }
     }
+}
+
+/**
+ * Looks like Nuvio's standard dialog, but can be wider, splits into two columns when there's room,
+ * and scrolls instead of running off short screens.
+ */
+@Composable
+private fun WatchPartyDialogFrame(
+    onDismiss: () -> Unit,
+    widthLimit: Dp,
+    secondColumn: (@Composable ColumnScope.() -> Unit)? = null,
+    firstColumn: @Composable ColumnScope.() -> Unit,
+) {
+    val tokens = MaterialTheme.nuvio
+    // A plain Dialog: Material's alert dialog quietly caps the width at 560 dp, too narrow for two columns.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(16.dp)
+                .widthIn(max = widthLimit)
+                .fillMaxWidth(),
+            shape = tokens.shapes.dialog,
+            color = tokens.colors.surfaceDialog,
+            contentColor = tokens.colors.textPrimary,
+            border = BorderStroke(tokens.borders.thin, SurfaceEdge),
+        ) {
+            BoxWithConstraints {
+                val columnArrangement = Arrangement.spacedBy(tokens.spacing.listGap)
+                if (secondColumn != null && maxWidth >= TwoColumnMinWidth) {
+                    Row(
+                        modifier = Modifier.padding(tokens.spacing.dialogPadding),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                            verticalArrangement = columnArrangement,
+                            content = firstColumn,
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                            verticalArrangement = columnArrangement,
+                            content = secondColumn,
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .padding(tokens.spacing.dialogPadding)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = columnArrangement,
+                    ) {
+                        firstColumn()
+                        secondColumn?.invoke(this)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogTitle() {
+    Text(
+        text = stringResource(Res.string.watch_party_title),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.nuvio.colors.textPrimary,
+    )
 }
 
 @Composable
@@ -86,46 +184,49 @@ private fun JoinOrCreateContent(onDismiss: () -> Unit) {
     }
 }
 
+/** Left side: the code to share, and how the connection is doing. */
 @Composable
-private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () -> Unit) {
+private fun RoomOverview(status: WatchPartyStatus, code: String) {
     val tokens = MaterialTheme.nuvio
 
-    Column(verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s8)) {
+    Text(
+        text = stringResource(
+            if (status.isOwner) Res.string.watch_party_host_message else Res.string.watch_party_guest_message,
+        ),
+        color = tokens.colors.textSecondary,
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Text(
+        text = WatchPartyRoomCode.format(code),
+        color = tokens.colors.textPrimary,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 4.sp,
+    )
+    InviteButtons(code)
+    Text(
+        text = stringResource(
+            when (status.connection) {
+                WatchPartyConnection.Connected -> Res.string.watch_party_status_connected
+                WatchPartyConnection.Connecting -> Res.string.watch_party_status_connecting
+                WatchPartyConnection.Disconnected -> Res.string.watch_party_status_reconnecting
+            },
+        ),
+        color = tokens.colors.textMuted,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (status.connectFailed) {
         Text(
-            text = stringResource(
-                if (status.isOwner) Res.string.watch_party_host_message else Res.string.watch_party_guest_message,
-            ),
-            color = tokens.colors.textSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = WatchPartyRoomCode.format(code),
-            color = tokens.colors.textPrimary,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 4.sp,
-        )
-        InviteButtons(code)
-        Text(
-            text = stringResource(
-                when (status.connection) {
-                    WatchPartyConnection.Connected -> Res.string.watch_party_status_connected
-                    WatchPartyConnection.Connecting -> Res.string.watch_party_status_connecting
-                    WatchPartyConnection.Disconnected -> Res.string.watch_party_status_reconnecting
-                },
-            ),
-            color = tokens.colors.textMuted,
+            text = stringResource(Res.string.watch_party_connect_failed),
+            color = tokens.colors.danger,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (status.connectFailed) {
-            Text(
-                text = stringResource(Res.string.watch_party_connect_failed),
-                color = tokens.colors.danger,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
+}
 
+/** Right side: who's here, who controls playback, and leaving. */
+@Composable
+private fun RoomPeople(status: WatchPartyStatus, onDismiss: () -> Unit) {
     status.pendingRequests.forEach { member ->
         ControlRequestRow(member)
     }
@@ -136,6 +237,7 @@ private fun RoomContent(status: WatchPartyStatus, code: String, onDismiss: () ->
 
     LeaveButtons(isOwner = status.isOwner, onDismiss = onDismiss)
 }
+
 
 @Composable
 private fun InviteButtons(code: String) {

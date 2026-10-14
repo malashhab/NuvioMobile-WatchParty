@@ -147,6 +147,10 @@ androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.applicationId.set("com.nuviodebug.com")
     }
+    // This fork's releases install next to the official Nuvio app instead of replacing it.
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.applicationId.set("com.nuvio.app.watchparty")
+    }
 }
 
 sentry {
