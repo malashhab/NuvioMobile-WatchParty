@@ -18,7 +18,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.autosync_toast_failed
 import nuvio.composeapp.generated.resources.autosync_toast_failed_no_reference
@@ -161,6 +163,8 @@ internal class IosAutoSyncCoordinator(
     }
 
     fun start(url: String, candidateScope: AutoSyncCandidateScope) {
+        // Picking the subtitle that is already synced keeps its timing instead of starting over.
+        if (url == syncedUrl) return
         reset()
         // Show the subtitle right away; the sync adjusts its timing once it has an answer.
         base.setSubtitleUri(url)
@@ -197,6 +201,10 @@ internal class IosAutoSyncCoordinator(
         cancel()
         val token = operationToken
         job = scope.launch {
+            // Let the video get going first, so reading the subtitle index doesn't compete with it.
+            withTimeoutOrNull(START_WAIT_MS) {
+                while (bridge.getIsLoading()) delay(START_POLL_MS)
+            }
             val result = try {
                 PortableSubtitleAutoSync.run(
                     sourceUrl = sourceUrl,
@@ -246,6 +254,11 @@ internal class IosAutoSyncCoordinator(
                 else -> showFailure(token, Res.string.autosync_toast_failed)
             }
         }
+    }
+
+    private companion object {
+        const val START_WAIT_MS = 20_000L
+        const val START_POLL_MS = 500L
     }
 
     private suspend fun showFailure(token: Long, resource: StringResource) {

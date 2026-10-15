@@ -52,7 +52,6 @@ internal sealed interface PortableAutoSyncResult {
  * When the chosen subtitle doesn't fit, other subtitles in the same language are tried.
  */
 internal object PortableSubtitleAutoSync {
-    private const val INDEX_TIMEOUT_MS = 15_000L
     private const val SUBTITLE_TIMEOUT_MS = 15_000L
     private const val MAX_SUBTITLE_BYTES = 4 * 1024 * 1024
     private const val MAX_REFERENCES_TRIED = 3
@@ -73,14 +72,13 @@ internal object PortableSubtitleAutoSync {
         toleranceMs: Int,
         /** Built-in tracks already rejected by the viewer ("try another reference"). */
         excludedReferenceKeys: Set<String> = emptySet(),
+        // Read once per video and kept, off the main thread; see EmbeddedSubtitleIndexCache.
         loadIndex: suspend () -> EmbeddedSubtitleIndexResult = {
-            withTimeoutOrNull(INDEX_TIMEOUT_MS) {
-                MatroskaSubtitleIndex.load(HttpByteRangeSource(sourceUrl, sourceHeaders))
-            } ?: EmbeddedSubtitleIndexResult.Unavailable
+            EmbeddedSubtitleIndexCache.load(sourceUrl, sourceHeaders)
         },
         loadSubtitle: suspend (url: String, headers: Map<String, String>) -> String? = ::downloadSubtitle,
     ): PortableAutoSyncResult = coroutineScope {
-        val indexDeferred = async { loadIndex() }
+        val indexDeferred = async(Dispatchers.Default) { loadIndex() }
         val selectedDeferred = async { loadCues(selectedUrl, subtitleHeaders(selectedUrl), loadSubtitle) }
 
         val references = when (val index = indexDeferred.await()) {
