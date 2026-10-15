@@ -22,6 +22,8 @@ class WatchPartyCoordinator(
     /** Who controls playback right now; see [WatchPartyControl]. */
     private val controllerId: () -> String,
     private val listener: Listener = object : Listener {},
+    /** True once for a member the owner just removed; see [WatchPartyControl.consumeRemoval]. */
+    private val wasRemoved: (memberId: String) -> Boolean = { false },
     private val driftToleranceMs: Long = DEFAULT_DRIFT_TOLERANCE_MS,
     private val settleWindowMs: Long = DEFAULT_SETTLE_WINDOW_MS,
     private val epoch: String = Uuid.random().toString(),
@@ -38,6 +40,15 @@ class WatchPartyCoordinator(
 
         /** Follower: we're ready, but the room is still waiting for others. */
         fun onWaitingForRoom() {}
+
+        /** Someone closed the video; [paused] when the room was playing and stopped for them. */
+        fun onMemberLeftVideo(memberId: String, paused: Boolean) {}
+
+        /** Controller: a follower pressed pause. */
+        fun onPauseRequested(memberId: String) {}
+
+        /** Follower: our pause request went to the controller. */
+        fun onPauseRequestSent() {}
     }
 
     val isController: Boolean
@@ -97,6 +108,7 @@ class WatchPartyCoordinator(
 
     // Ping often while settling in, after reconnecting or when sync drifts; rarely once things are steady.
     private var lastPingAtMs: Long? = null
+    private var lastPauseRequestAtMs: Long? = null
     private var fastPingUntilMs = Long.MIN_VALUE
     private var lastStateRequestAtMs: Long? = null
 
@@ -167,6 +179,23 @@ class WatchPartyCoordinator(
         player.pause()
         controllerSettleUntilMs = nowMs() + settleWindowMs
         sendConstructedState(isPlaying = false, holdId = null)
+        return true
+    }
+
+    /**
+     * A follower pressed pause while the room plays: asks the controller instead. Returns false when
+     * that doesn't apply (we're in control, or the room isn't playing), so the caller can explain.
+     */
+    fun requestPauseFromFollower(): Boolean {
+        if (!started || isController || targetPlayback?.isPlaying != true) return false
+        val now = nowMs()
+        val last = lastPauseRequestAtMs
+        // Repeated taps within a few seconds count as one request.
+        if (last == null || now - last >= PAUSE_REQUEST_INTERVAL_MS) {
+            lastPauseRequestAtMs = now
+            transport.send(WatchPartyMessage.PauseRequest(senderId = localMemberId))
+            listener.onPauseRequestSent()
+        }
         return true
     }
 
@@ -265,11 +294,22 @@ class WatchPartyCoordinator(
             is WatchPartyMessage.Ping -> if (isController) {
                 pendingPings[message.senderId] = message.sentAtMs to nowMs()
             }
-            is WatchPartyMessage.Leaving -> if (isController) {
-                followerSeenAtMs.remove(message.senderId)
-                followerStalledSinceMs.remove(message.senderId)
-                pendingPings.remove(message.senderId)
-                evaluateHold()
+            is WatchPartyMessage.Leaving -> {
+                // Someone the owner removed is expected to go; that's no reason to stop the video.
+                val removed = wasRemoved(message.senderId)
+                var paused = false
+                if (isController) {
+                    followerSeenAtMs.remove(message.senderId)
+                    followerStalledSinceMs.remove(message.senderId)
+                    pendingPings.remove(message.senderId)
+                    // Stop for everyone when someone walks away mid-video, rather than leave them behind.
+                    if (!removed && (sentPlaying || readyCheck.isHolding)) paused = requestPause()
+                    if (!paused) evaluateHold()
+                }
+                if (!removed) listener.onMemberLeftVideo(message.senderId, paused)
+            }
+            is WatchPartyMessage.PauseRequest -> if (isController && sentPlaying) {
+                listener.onPauseRequested(message.senderId)
             }
             // Separate pongs come only from older versions of the app.
             is WatchPartyMessage.Pong -> if (
@@ -676,6 +716,8 @@ class WatchPartyCoordinator(
 
         // The source goes out with the next few updates after it changes, in case one is lost.
         private const val SOURCE_REPEATS = 3
+
+        private const val PAUSE_REQUEST_INTERVAL_MS = 5_000L
         private const val MAX_ONE_WAY_LATENCY_MS = 1_000L
 
         // Start nudging past 150 ms apart, stop once within 40 ms; 5% faster or slower is barely noticeable.

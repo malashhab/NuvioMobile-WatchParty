@@ -100,6 +100,8 @@ data class WatchPartyRoom(
 data class WatchPartyMember(
     val memberId: String,
     val name: String,
+    /** In the player right now. Null from older app versions, which only announce themselves there. */
+    val watching: Boolean? = null,
 )
 
 /**
@@ -164,6 +166,13 @@ sealed interface WatchPartyMessage {
         override val senderId: String,
     ) : WatchPartyMessage
 
+    /** A follower pressed pause; only the controller can pause, so it's asked to. */
+    @Serializable
+    @SerialName("pause_request")
+    data class PauseRequest(
+        override val senderId: String,
+    ) : WatchPartyMessage
+
     /** A follower measuring the network delay to the controller; times are on the follower's own clock. */
     @Serializable
     @SerialName("ping")
@@ -220,6 +229,14 @@ sealed interface WatchPartyMessage {
     @Serializable
     @SerialName("control_denied")
     data class ControlDenied(
+        override val senderId: String,
+        val memberId: String,
+    ) : WatchPartyMessage
+
+    /** The owner removes a member from the room. Only the owner's count; the member can join again. */
+    @Serializable
+    @SerialName("member_removed")
+    data class MemberRemoved(
         override val senderId: String,
         val memberId: String,
     ) : WatchPartyMessage

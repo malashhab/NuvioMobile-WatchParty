@@ -88,4 +88,26 @@ class WatchPartyMessageTest {
         assertEquals(listOf(wire(chat), wire(state(2))), collapseBacklog(backlog))
     }
 
+    @Test
+    fun onlyMembersInTheVideoCountAsWatching() {
+        val status = WatchPartyStatus(
+            members = listOf(
+                WatchPartyMember(memberId = "host", name = "Host", watching = true),
+                WatchPartyMember(memberId = "away", name = "Away", watching = false),
+                // Older app versions don't say; they only join rooms from the player.
+                WatchPartyMember(memberId = "old", name = "Old"),
+            ),
+        )
+
+        assertEquals(2, status.watchingCount)
+    }
+
+    @Test
+    fun membersFromOlderVersionsStillDecode() {
+        val member = decodeWatchPartyMember(
+            Json.parseToJsonElement("""{"memberId":"m1","name":"Sam"}""").jsonObject,
+        )
+
+        assertEquals(WatchPartyMember(memberId = "m1", name = "Sam", watching = null), member)
+    }
 }

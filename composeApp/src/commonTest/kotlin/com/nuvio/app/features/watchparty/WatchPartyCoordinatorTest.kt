@@ -39,6 +39,18 @@ class WatchPartyCoordinatorTest {
         override fun onWaitingForRoom() {
             events += "waiting-for-room"
         }
+
+        override fun onMemberLeftVideo(memberId: String, paused: Boolean) {
+            events += if (paused) "left-paused:$memberId" else "left:$memberId"
+        }
+
+        override fun onPauseRequested(memberId: String) {
+            events += "pause-requested:$memberId"
+        }
+
+        override fun onPauseRequestSent() {
+            events += "pause-request-sent"
+        }
     }
 
     private fun coordinator(
@@ -47,6 +59,7 @@ class WatchPartyCoordinatorTest {
         player: WatchPartyPlayerPort,
         listener: WatchPartyCoordinator.Listener,
         epoch: String = "$memberId-epoch",
+        wasRemoved: (String) -> Boolean = { false },
     ) = WatchPartyCoordinator(
         localMemberId = memberId,
         transport = transport,
@@ -54,6 +67,7 @@ class WatchPartyCoordinatorTest {
         nowMs = { now },
         controllerId = { controller },
         listener = listener,
+        wasRemoved = wasRemoved,
         epoch = epoch,
     )
 
@@ -487,12 +501,12 @@ class WatchPartyCoordinatorTest {
     fun memberWhoLeftThePlayerIsNotWaitedFor() {
         host.start()
         guest.start()
+        // Leaving pauses the room; pressing play then starts without waiting for them.
         guest.stop()
         hostPlayer.actions.clear()
 
         now = 20_000L
-        hostPlayer.positionMs = 300_000L
-        host.onLocalSeek()
+        host.requestPlay()
 
         assertEquals(listOf("pause", "play"), hostPlayer.actions)
     }
@@ -654,7 +668,7 @@ class WatchPartyCoordinatorTest {
     }
 
     @Test
-    fun aFollowerClosingThePlayerIsNotWaitedFor() {
+    fun aFollowerClosingThePlayerDuringASeekKeepsTheRoomPaused() {
         host.start()
         guest.start()
         hostPlayer.actions.clear()
@@ -668,7 +682,87 @@ class WatchPartyCoordinatorTest {
         now = 3_000L
         guest.stop()
 
-        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+        // No longer waiting for them, and not playing on without them either.
+        assertTrue("play" !in hostPlayer.actions)
+        assertEquals(listOf("left-paused:guest"), hostEvents.events)
+        now = 40_000L
+        host.onTick()
+        assertTrue("play" !in hostPlayer.actions)
+    }
+
+    @Test
+    fun aGuestClosingTheVideoPausesItForEveryone() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+
+        now = 5_000L
+        guest.stop()
+
+        assertEquals(listOf("pause"), hostPlayer.actions)
+        assertEquals(listOf("left-paused:guest"), hostEvents.events)
+    }
+
+    @Test
+    fun aGuestClosingAPausedVideoIsOnlyMentioned() {
+        hostPlayer.isPlaying = false
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+
+        now = 5_000L
+        guest.stop()
+
+        assertTrue(hostPlayer.actions.isEmpty())
+        assertEquals(listOf("left:guest"), hostEvents.events)
+    }
+
+    @Test
+    fun aRemovedGuestLeavingDoesNotStopTheVideo() {
+        val removedOnce = mutableSetOf("guest")
+        val removingHost = coordinator(
+            "host", hub.connect(), hostPlayer, hostEvents, epoch = "host-epoch-2", wasRemoved = { removedOnce.remove(it) },
+        )
+        removingHost.start()
+        guest.start()
+        hostPlayer.actions.clear()
+
+        now = 5_000L
+        guest.stop()
+
+        assertTrue(hostPlayer.actions.isEmpty())
+        assertTrue(hostEvents.events.isEmpty())
+    }
+
+    @Test
+    fun aGuestPressingPauseAsksTheControllerOnceEveryFewSeconds() {
+        host.start()
+        guest.start()
+
+        now = 5_000L
+        assertTrue(guest.requestPauseFromFollower())
+        now = 7_000L
+        assertTrue(guest.requestPauseFromFollower())
+
+        assertEquals(listOf("pause-requested:guest"), hostEvents.events)
+        assertEquals(listOf("pause-request-sent"), guestEvents.events)
+        // Asking never pauses anyone by itself.
+        assertTrue(hostPlayer.isPlaying)
+
+        now = 10_500L
+        guest.requestPauseFromFollower()
+        assertEquals(listOf("pause-requested:guest", "pause-requested:guest"), hostEvents.events)
+    }
+
+    @Test
+    fun pressingPauseInAPausedRoomIsNotARequest() {
+        hostPlayer.isPlaying = false
+        host.start()
+        guest.start()
+
+        assertFalse(guest.requestPauseFromFollower())
+        assertFalse(host.requestPauseFromFollower())
+        assertTrue(hostEvents.events.isEmpty())
     }
 
     @Test

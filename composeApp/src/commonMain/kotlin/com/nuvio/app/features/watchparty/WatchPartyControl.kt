@@ -38,6 +38,10 @@ class WatchPartyControl(
     private val _requestState = MutableStateFlow(ControlRequestState.None)
     val requestState: StateFlow<ControlRequestState> = _requestState.asStateFlow()
 
+    /** Member side: the owner removed us from the room. */
+    private val _removed = MutableStateFlow(false)
+    val removed: StateFlow<Boolean> = _removed.asStateFlow()
+
     // Owner side.
     private var nextSeq = 1L
 
@@ -76,6 +80,20 @@ class WatchPartyControl(
         announceController(localMemberId)
     }
 
+    /** Owner side: asks a member to leave. Their leaving hands control back if they had it. */
+    fun removeMember(memberId: String) {
+        if (!isOwner || memberId == localMemberId) return
+        _pendingRequests.update { requests -> requests.filterNot { it.memberId == memberId } }
+        removedMemberIds += memberId
+        send(WatchPartyMessage.MemberRemoved(senderId = localMemberId, memberId = memberId))
+    }
+
+    // Members the owner removed, so their leaving isn't treated as walking away from the video.
+    private val removedMemberIds = mutableSetOf<String>()
+
+    /** True once for a member the owner removed; their later visits count normally again. */
+    fun consumeRemoval(memberId: String): Boolean = removedMemberIds.remove(memberId)
+
     /** Owner side: forget requests from members who left, and recover control if the controller left. */
     fun onMembersChanged(members: List<WatchPartyMember>) {
         if (!isOwner) return
@@ -113,6 +131,12 @@ class WatchPartyControl(
                 onControlChanged(message)
                 true
             }
+            is WatchPartyMessage.MemberRemoved -> {
+                if (message.senderId == room.ownerMemberId) {
+                    if (message.memberId == localMemberId) _removed.value = true else removedMemberIds += message.memberId
+                }
+                true
+            }
             is WatchPartyMessage.StateRequest -> {
                 // Newcomers assume the owner controls; correct them when someone else does.
                 if (isOwner && !isController) announceController(_controllerId.value)
@@ -126,6 +150,7 @@ class WatchPartyControl(
             is WatchPartyMessage.Ping,
             is WatchPartyMessage.Pong,
             is WatchPartyMessage.Leaving,
+            is WatchPartyMessage.PauseRequest,
             -> false
         }
     }
