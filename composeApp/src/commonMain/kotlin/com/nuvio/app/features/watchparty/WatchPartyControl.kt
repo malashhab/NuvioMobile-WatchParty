@@ -125,6 +125,7 @@ class WatchPartyControl(
             is WatchPartyMessage.Chat,
             is WatchPartyMessage.Ping,
             is WatchPartyMessage.Pong,
+            is WatchPartyMessage.Leaving,
             -> false
         }
     }

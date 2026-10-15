@@ -102,6 +102,18 @@ data class WatchPartyMember(
     val name: String,
 )
 
+/**
+ * The controller's answer to a follower's [WatchPartyMessage.Ping], carried inside its next update
+ * instead of a message of its own. [heldMs] is how long the controller waited before sending, which the
+ * follower subtracts so the round trip stays exact.
+ */
+@Serializable
+data class PingEcho(
+    val to: String,
+    val sentAtMs: Long,
+    val heldMs: Long,
+)
+
 @Serializable
 sealed interface WatchPartyMessage {
     val senderId: String
@@ -119,6 +131,7 @@ sealed interface WatchPartyMessage {
         val playback: WatchPartyPlayback,
         /** Set while the room is held: get ready at this position, answer with [Ready], and wait. */
         val holdId: String? = null,
+        val pongs: List<PingEcho> = emptyList(),
     ) : WatchPartyMessage
 
     /** A member is loaded and positioned for the hold the controller announced. */
@@ -140,6 +153,14 @@ sealed interface WatchPartyMessage {
     @Serializable
     @SerialName("keep_alive")
     data class KeepAlive(
+        override val senderId: String,
+        val pongs: List<PingEcho> = emptyList(),
+    ) : WatchPartyMessage
+
+    /** A follower closed the player, so the controller stops waiting for them right away. */
+    @Serializable
+    @SerialName("leaving")
+    data class Leaving(
         override val senderId: String,
     ) : WatchPartyMessage
 

@@ -27,6 +27,7 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import nuvio.composeapp.generated.resources.Res
@@ -169,7 +170,8 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     }
 
     LaunchedEffect(coordinator, party) {
-        party.control.controllerId.collect { coordinator.onControllerChanged() }
+        // The first value is the controller we started with, not a change.
+        party.control.controllerId.drop(1).collect { coordinator.onControllerChanged() }
     }
 
     LaunchedEffect(

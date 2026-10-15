@@ -573,17 +573,178 @@ class WatchPartyCoordinatorTest {
     }
 
     @Test
-    fun pingsAreAnsweredOnlyByTheController() {
+    fun pingsAreAnsweredInsideTheControllersNextUpdate() {
         host.start()
         guest.start()
         hub.sentMessages.clear()
 
         now = 5_000L
         guest.onHeartbeat()
+        now = 6_000L
+        hostPlayer.positionMs = 66_000L
+        host.onHeartbeat()
 
-        val pong = hub.sentMessages.filterIsInstance<WatchPartyMessage.Pong>().single()
-        assertEquals("host", pong.senderId)
-        assertEquals("guest", pong.to)
+        assertTrue(hub.sentMessages.none { it is WatchPartyMessage.Pong })
+        val state = hub.sentMessages.filterIsInstance<WatchPartyMessage.State>().single()
+        assertEquals(listOf(PingEcho(to = "guest", sentAtMs = 5_000L, heldMs = 1_000L)), state.pongs)
+
+        // Answered once only.
+        now = 11_000L
+        host.onHeartbeat()
+        assertTrue(hub.sentMessages.filterIsInstance<WatchPartyMessage.State>().last().pongs.isEmpty())
+    }
+
+    @Test
+    fun timeAnAnswerWaitedAtTheControllerIsNotCountedAsNetworkDelay() {
+        host.start()
+        guest.start()
+
+        // 1000 ms since the ping, 400 of it waiting for the controller's next update: a 600 ms round trip.
+        now = 1_000L
+        hostConnection.send(
+            WatchPartyMessage.KeepAlive(
+                senderId = "host",
+                pongs = listOf(PingEcho(to = "guest", sentAtMs = 0L, heldMs = 400L)),
+            ),
+        )
+
+        now = 2_000L
+        guestPlayer.positionMs = 62_000L
+        guest.onTick()
+
+        assertEquals(1.05f, guestPlayer.playbackSpeed)
+    }
+
+    private fun guestPingsBetween(fromMs: Long, toMs: Long): Int {
+        var pings = 0
+        var at = fromMs
+        while (at <= toMs) {
+            now = at
+            hostPlayer.positionMs = 60_000L + at
+            guestPlayer.positionMs = 60_000L + at
+            host.onHeartbeat()
+            hub.sentMessages.clear()
+            guest.onHeartbeat()
+            pings += hub.sentMessages.count { it is WatchPartyMessage.Ping }
+            at += 5_000L
+        }
+        return pings
+    }
+
+    @Test
+    fun followersPingOftenWhileSettlingInThenRarely() {
+        host.start()
+        guest.start()
+
+        assertEquals(11, guestPingsBetween(5_000L, 55_000L))
+        assertEquals(2, guestPingsBetween(60_000L, 120_000L))
+    }
+
+    @Test
+    fun driftingMakesFollowersPingOftenAgain() {
+        host.start()
+        guest.start()
+        guestPingsBetween(5_000L, 120_000L)
+
+        guestPlayer.positionMs += 500L
+        guest.onTick()
+        assertEquals(0.95f, guestPlayer.playbackSpeed)
+
+        assertEquals(3, guestPingsBetween(125_000L, 135_000L))
+    }
+
+    @Test
+    fun aFollowerClosingThePlayerIsNotWaitedFor() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.loadsAfterSeek = true
+
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+        assertEquals(listOf("pause"), hostPlayer.actions)
+
+        now = 3_000L
+        guest.stop()
+
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun theSourceIsSentAfterItChangesAndThenLeftOut() {
+        val torrentio = WatchPartySource(addonName = "Torrentio", name = "1080p")
+        hostPlayer.source = torrentio
+        host.start()
+        guest.start()
+        hub.sentMessages.clear()
+
+        (1..5).forEach {
+            now = it * 5_000L
+            host.onHeartbeat()
+        }
+        val sources = hub.sentMessages.filterIsInstance<WatchPartyMessage.State>().map { it.playback.source }
+        assertEquals(listOf(torrentio, torrentio, null, null, null), sources)
+
+        hub.sentMessages.clear()
+        val other = torrentio.copy(name = "4K")
+        hostPlayer.source = other
+        (6..9).forEach {
+            now = it * 5_000L
+            host.onHeartbeat()
+        }
+        val changed = hub.sentMessages.filterIsInstance<WatchPartyMessage.State>().map { it.playback.source }
+        assertEquals(listOf(other, other, other, null), changed)
+    }
+
+    @Test
+    fun followersRememberTheSourceWhenUpdatesLeaveItOut() {
+        val torrentio = WatchPartySource(addonName = "Torrentio", name = "1080p")
+        hostPlayer.source = torrentio
+        host.start()
+        guest.start()
+        (1..5).forEach {
+            now = it * 5_000L
+            hostPlayer.positionMs = 60_000L + now
+            host.onHeartbeat()
+        }
+
+        // The follower wandered to another episode; it returns with the controller's source.
+        guestPlayer.switchesContentOnOpen = false
+        guestPlayer.content = episodeTwo
+        guest.onTick()
+
+        assertEquals(torrentio, guestPlayer.openedSources.last())
+    }
+
+    @Test
+    fun joiningAsksForTheStateOnce() {
+        host.start()
+        hub.sentMessages.clear()
+
+        guest.start()
+        // The player then reports the connection as up, which counts as reconnecting.
+        guest.onReconnected()
+
+        assertEquals(1, hub.sentMessages.count { it is WatchPartyMessage.StateRequest })
+    }
+
+    @Test
+    fun aSeekThatStartedLoadingHoldsTheRoomOnlyOnce() {
+        host.start()
+        guest.start()
+        hub.sentMessages.clear()
+
+        // The seek makes the controller's video load first, which holds the room; then the seek is reported.
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        hostPlayer.isReady = false
+        host.onLocalPlaybackChanged()
+        now = 2_700L
+        host.onLocalSeek()
+
+        val holds = hub.sentMessages.filterIsInstance<WatchPartyMessage.State>().mapNotNull { it.holdId }.toSet()
+        assertEquals(1, holds.size)
     }
 
     @Test
