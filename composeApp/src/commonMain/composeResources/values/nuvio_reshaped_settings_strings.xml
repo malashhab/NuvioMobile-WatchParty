@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_nuvio_reshaped">Nuvio Reshaped</string>
+    <string name="settings_nuvio_reshaped_description">AutoSync, subtitle fonts, seek buffer and previews, pill menu and streams</string>
+    <string name="settings_nuvio_reshaped_autosync_section">Subtitle AutoSync</string>
+    <string name="settings_nuvio_reshaped_subtitle_section">Subtitles</string>
+    <string name="settings_playback_subtitle_font">Subtitle font</string>
+    <string name="settings_playback_subtitle_font_default">Default. Tap to import a .ttf or .otf file</string>
+    <string name="settings_playback_subtitle_font_importing">Importing font…</string>
+    <string name="settings_playback_subtitle_font_reset">Reset</string>
+    <string name="settings_playback_subtitle_font_invalid">That file isn't a usable TTF or OTF font.</string>
+    <string name="settings_autosync_bubble_toast">Bubble notifications</string>
+    <string name="settings_autosync_bubble_toast_description">Show AutoSync progress and results in an animated glass bubble at the bottom of the player instead of plain toasts</string>
+    <string name="settings_library_calendar">Library calendar</string>
+    <string name="settings_library_calendar_description">Show a release calendar button in Library for saved movies and series.</string>
+</resources>

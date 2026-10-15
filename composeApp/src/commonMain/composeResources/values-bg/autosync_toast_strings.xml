@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Анализиране…</string>
+    <string name="autosync_toast_synced">Auto Sync • Субтитрите са синхронизирани</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Превключено към по-добре съвпадащи субтитри</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Субтитрите вече са синхронизирани</string>
+    <string name="autosync_toast_failed">Auto Sync • Синхронизирането не успя • таймингът на субтитрите не е променен</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Няма вградени субтитри за сравнение • таймингът на субтитрите не е променен</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Форматът на субтитрите не се поддържа • таймингът на субтитрите не е променен</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Няма съвпадение • синхронизиране по звука…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Синхронизирано по друга референция</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Не е намерена по-добра референция</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Повторният опит с друга референция е неуспешен • текущата синхронизация е запазена</string>
+    <string name="autosync_label_synced">Автоматично синхронизирани</string>
+</resources>

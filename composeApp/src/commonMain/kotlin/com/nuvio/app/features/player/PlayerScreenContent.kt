@@ -153,7 +153,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         )
         runtime.BindPlayerRuntimeEffects()
         runtime.BindWatchPartyEffects()
-        runtime.RenderPlayerRuntimeUi()
+        runtime.WithSeekPreview { runtime.RenderPlayerRuntimeUi() }
         runtime.RenderWatchPartyChat()
     }
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • 解析中…</string>
+    <string name="autosync_toast_synced">Auto Sync • 字幕を同期しました</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • より一致する字幕に切り替えました</string>
+    <string name="autosync_toast_in_sync">Auto Sync • 字幕はすでに同期しています</string>
+    <string name="autosync_toast_failed">Auto Sync • 同期に失敗しました • 字幕のタイミングは変更されていません</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • 比較できる埋め込み字幕がありません • 字幕のタイミングは変更されていません</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • 非対応の字幕形式です • 字幕のタイミングは変更されていません</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • 一致が見つかりません • 代わりに音声に同期しています…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • 別の参照で同期しました</string>
+    <string name="autosync_toast_retry_none">Auto Sync • より良い参照が見つかりません</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • 別の参照での再試行に失敗しました • 現在の同期を維持しました</string>
+    <string name="autosync_label_synced">自動同期済み</string>
+</resources>

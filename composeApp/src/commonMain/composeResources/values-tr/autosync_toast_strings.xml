@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analiz ediliyor…</string>
+    <string name="autosync_toast_synced">Auto Sync • Altyazılar eşitlendi</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Daha iyi eşleşen bir altyazıya geçildi</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Altyazılar zaten eşit</string>
+    <string name="autosync_toast_failed">Auto Sync • Eşitleme başarısız • altyazı zamanlaması değişmedi</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Karşılaştırılacak gömülü altyazı yok • altyazı zamanlaması değişmedi</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Altyazı biçimi desteklenmiyor • altyazı zamanlaması değişmedi</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Eşleşme bulunamadı • bunun yerine sese göre eşitleniyor…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Başka bir referansa göre eşitlendi</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Daha iyi referans bulunamadı</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Başka referansla yeniden deneme başarısız • mevcut senkronizasyon korundu</string>
+    <string name="autosync_label_synced">Otomatik eşitlendi</string>
+</resources>

@@ -14,6 +14,7 @@ import com.nuvio.app.features.details.MetaScreenSettingsUiState
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.p2p.P2pSettingsUiState
 import com.nuvio.app.features.p2p.P2pStreamingState
+import com.nuvio.app.features.player.seekpreview.SeekPreviewSession
 import com.nuvio.app.features.player.skip.NextEpisodeInfo
 import com.nuvio.app.features.player.skip.SkipInterval
 import com.nuvio.app.features.streams.StreamsUiState
@@ -52,6 +53,7 @@ internal class PlayerScreenRuntime(
     val parentMetaId: String get() = args.parentMetaId
     val parentMetaType: String get() = args.parentMetaType
     val providerAddonId: String? get() = args.providerAddonId
+    val isReshapedLiveTv: Boolean get() = contentType == "live-tv" && providerAddonId == "reshaped-live-tv"
     val torrentInfoHash: String? get() = args.torrentInfoHash
     val torrentFileIdx: Int? get() = args.torrentFileIdx
     val torrentFilename: String? get() = args.torrentFilename
@@ -60,6 +62,7 @@ internal class PlayerScreenRuntime(
     val initialProgressFraction: Float? get() = args.initialProgressFraction
     var externalSubtitles by mutableStateOf(args.externalSubtitles)
     val isSeries: Boolean get() = parentMetaType == "series"
+    var showReshapedLiveTvChannelsPanel by mutableStateOf(false)
 
     lateinit var scope: CoroutineScope
     lateinit var hapticFeedback: HapticFeedback
@@ -138,6 +141,7 @@ internal class PlayerScreenRuntime(
     var errorMessage by mutableStateOf<String?>(null)
     var isScrubbingTimeline by mutableStateOf(false)
     var scrubbingPositionMs by mutableStateOf<Long?>(null)
+    val seekPreview = SeekPreviewSession()
     var pausedOverlayVisible by mutableStateOf(false)
     var gestureFeedback by mutableStateOf<GestureFeedbackState?>(null)
     var liveGestureFeedback by mutableStateOf<GestureFeedbackState?>(null)

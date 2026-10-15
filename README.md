@@ -19,7 +19,10 @@
 
 ## What's different from Nuvio
 
-Nuvio WP is the regular Nuvio app with Watch Party added on top. Everything else works as in official Nuvio.
+Nuvio WP is the regular Nuvio app with Watch Party added on top. On Android it also includes the extras from
+[Nuvio Reshaped](https://github.com/DavidVamaiotu/NuvioMobile-Reshaped): subtitle AutoSync (including syncing to the
+audio), custom subtitle fonts, seek previews, a seek buffer, volume boost and Live TV. They're in their own Settings
+section and off until you turn them on.
 
 ### Watch Party
 
@@ -118,6 +121,9 @@ for the build command. The app is built with Kotlin Multiplatform and Compose Mu
 
 Nuvio WP is built on [Nuvio](https://github.com/NuvioMedia/NuvioMobile) by the NuvioMedia team. All of the app
 except Watch Party is their work. If you enjoy it, please [support Nuvio](https://nuvio.tv/support).
+
+The Android extras come from [Nuvio Reshaped](https://github.com/DavidVamaiotu/NuvioMobile-Reshaped) by
+[DavidVamaiotu](https://github.com/DavidVamaiotu), also under the GPL-3.0. Audio sync uses [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0).
 
 ## License
 

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analizowanie…</string>
+    <string name="autosync_toast_synced">Auto Sync • Napisy zsynchronizowane</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Przełączono na lepiej dopasowane napisy</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Napisy są już zsynchronizowane</string>
+    <string name="autosync_toast_failed">Auto Sync • Synchronizacja nie powiodła się • czas napisów bez zmian</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Brak osadzonych napisów do porównania • czas napisów bez zmian</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Nieobsługiwany format napisów • czas napisów bez zmian</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Nie znaleziono dopasowania • synchronizacja z dźwiękiem…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Zsynchronizowano według innej referencji</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Nie znaleziono lepszej referencji</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Ponowna próba z inną referencją nie powiodła się • zachowano bieżącą synchronizację</string>
+    <string name="autosync_label_synced">Zsynchronizowano automatycznie</string>
+</resources>

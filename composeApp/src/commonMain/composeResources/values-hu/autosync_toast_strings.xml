@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Elemzés…</string>
+    <string name="autosync_toast_synced">Auto Sync • Feliratok szinkronizálva</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Váltás egy jobban illeszkedő feliratra</string>
+    <string name="autosync_toast_in_sync">Auto Sync • A feliratok már szinkronban vannak</string>
+    <string name="autosync_toast_failed">Auto Sync • A szinkronizálás sikertelen • a felirat időzítése nem változott</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Nincs beágyazott felirat az összehasonlításhoz • a felirat időzítése nem változott</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • A feliratformátum nem támogatott • a felirat időzítése nem változott</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Nincs egyezés • szinkronizálás a hanghoz…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Szinkronizálva egy másik referenciához</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Nem található jobb referencia</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Az újrapróbálkozás másik referenciával sikertelen • jelenlegi szinkron megtartva</string>
+    <string name="autosync_label_synced">Automatikusan szinkronizálva</string>
+</resources>

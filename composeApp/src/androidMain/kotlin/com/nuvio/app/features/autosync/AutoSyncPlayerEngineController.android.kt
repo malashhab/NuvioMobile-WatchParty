@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.SidecarSubtitleController
@@ -26,13 +27,17 @@ internal fun rememberAutoSyncCoordinator(
     externalSubtitles: List<StreamSubtitle>,
     useLibass: Boolean,
     preferredSubtitleLanguage: String?,
+    secondaryPreferredSubtitleLanguage: String?,
     onMimeTypeSelected: (String) -> Unit,
     onSubtitleDelayChanged: (Int) -> Unit,
+    sourceAudioUrl: String? = null,
+    dataSourceFactory: DataSource.Factory? = null,
 ): AutoSyncPlayerCoordinator {
     val context = LocalContext.current
     val latestExternalSubtitles = rememberUpdatedState(externalSubtitles)
     val latestUseLibass = rememberUpdatedState(useLibass)
     val latestPreferredLanguage = rememberUpdatedState(preferredSubtitleLanguage)
+    val latestSecondaryLanguage = rememberUpdatedState(secondaryPreferredSubtitleLanguage)
     val coordinator = remember(playerSourceKey, player, sidecar, scope) {
         AutoSyncPlayerCoordinator(
             context = context,
@@ -49,8 +54,11 @@ internal fun rememberAutoSyncCoordinator(
             },
             getUseLibass = { latestUseLibass.value },
             getPreferredLanguage = { latestPreferredLanguage.value },
+            getSecondaryLanguage = { latestSecondaryLanguage.value },
             onMimeTypeSelected = onMimeTypeSelected,
             onSubtitleDelayChanged = onSubtitleDelayChanged,
+            sourceAudioUrl = sourceAudioUrl,
+            dataSourceFactory = dataSourceFactory,
         )
     }
     DisposableEffect(coordinator) {
@@ -67,9 +75,14 @@ internal class AutoSyncPlayerEngineController(
     private val base: PlayerEngineController,
     private val coordinator: AutoSyncPlayerCoordinator,
 ) : PlayerEngineController by base, AutoSyncPlayerController {
+    override val autoSyncRetryState = coordinator.retryState
+
+    override fun retryWithAnotherReference() = coordinator.retryWithAnotherReference()
 
     override fun setAutoSyncSubtitleCandidates(candidates: List<AutoSyncSubtitleCandidate>) =
         coordinator.setCandidates(candidates)
+
+    override fun setAutoSyncContent(type: String, videoId: String) = coordinator.setContent(type, videoId)
 
     override fun setAutoSyncAppliedListener(
         listener: ((subtitleUrl: String, delayMs: Int) -> Unit)?,
@@ -82,14 +95,14 @@ internal class AutoSyncPlayerEngineController(
         coordinator.start(
             url = url,
             candidateScope = AutoSyncCandidateScope.STARTUP_SEARCH,
-            fallbackAttach = base::setSubtitleUri,
+            fallbackAttach = ::setSubtitleUri,
         )
 
     override fun setSubtitleUriWithSelectedAutoSync(url: String) =
         coordinator.start(
             url = url,
             candidateScope = AutoSyncCandidateScope.SELECTED_ONLY,
-            fallbackAttach = base::setSubtitleUri,
+            fallbackAttach = ::setSubtitleUri,
         )
 
     override fun selectSubtitleTrack(index: Int) {
@@ -107,8 +120,8 @@ internal class AutoSyncPlayerEngineController(
         base.clearExternalSubtitleAndSelect(trackIndex)
     }
 
-    override fun cancelForManualSubtitleDelay() {
-        coordinator.cancel()
-        AutoSyncSyncedSubtitle.clear()
+    override fun setSubtitleDelayMs(delayMs: Int) {
+        coordinator.onManualSubtitleDelayChanged()
+        base.setSubtitleDelayMs(delayMs)
     }
 }

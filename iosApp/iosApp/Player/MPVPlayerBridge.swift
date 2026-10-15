@@ -192,6 +192,8 @@ final class MPVPlayerBridgeImpl: NSObject, NuvioPlayerBridge {
     func getDurationMs() -> Int64 { return playerVC?.durationMs ?? 0 }
     func getPositionMs() -> Int64 { return playerVC?.positionMs ?? 0 }
     func getBufferedMs() -> Int64 { return playerVC?.bufferedMs ?? 0 }
+    func getCacheSpeedBytesPerSecond() -> Int64 { return playerVC?.cacheSpeedBytesPerSecond ?? 0 }
+    func getIsCacheIdle() -> Bool { return playerVC?.isCacheIdle ?? true }
     func getPlaybackSpeed() -> Float { playerVC?.currentSpeed ?? 1.0 }
     func getErrorMessage() -> String { playerVC?.currentErrorMessage ?? "" }
     func getProperty(name: String) -> String { playerVC?.getString(name) ?? "" }
@@ -286,6 +288,8 @@ final class MPVPlayerViewController: UIViewController {
     var durationMs: Int64 = 0
     var positionMs: Int64 = 0
     var bufferedMs: Int64 = 0
+    var cacheSpeedBytesPerSecond: Int64 = 0
+    var isCacheIdle: Bool = true
     var currentSpeed: Float = 1.0
     var currentErrorMessage: String {
         errorStateLock.lock()
@@ -938,6 +942,8 @@ final class MPVPlayerViewController: UIViewController {
         let idle = getFlag("core-idle")
         let seeking = getFlag("seeking")
         let bufferingCache = getFlag("paused-for-cache")
+        let cacheSpeed = getDouble("cache-speed")
+        let cacheIdle = getFlag("demuxer-cache-idle")
 
         isPlayerLoading = (idle && !paused && !eofReached) || seeking || bufferingCache
         isPlayerPlaying = !paused && !idle && !eofReached
@@ -945,6 +951,8 @@ final class MPVPlayerViewController: UIViewController {
         durationMs = Int64(duration * 1000)
         positionMs = Int64(max(position, 0) * 1000)
         bufferedMs = Int64(max(position + cached, 0) * 1000)
+        cacheSpeedBytesPerSecond = Int64(max(cacheSpeed, 0))
+        isCacheIdle = cacheIdle
         currentSpeed = Float(speed > 0 ? speed : 1.0)
 
         let shouldPublishNowPlayingState = !isPlayerLoading || isPlayerPlaying || durationMs > 0 || positionMs > 0

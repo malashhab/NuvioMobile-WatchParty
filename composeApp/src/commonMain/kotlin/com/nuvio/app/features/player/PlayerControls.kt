@@ -33,6 +33,10 @@ import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -109,6 +113,7 @@ internal fun PlayerControlsShell(
     onAudioClick: () -> Unit,
     onVideoSettingsClick: (() -> Unit)? = null,
     onSourcesClick: (() -> Unit)? = null,
+    onChannelsClick: (() -> Unit)? = null,
     onEpisodesClick: (() -> Unit)? = null,
     onOpenInExternalPlayer: (() -> Unit)? = null,
     onSubmitIntroClick: (() -> Unit)? = null,
@@ -262,6 +267,7 @@ internal fun PlayerControlsShell(
                     onSubtitleClick = onSubtitleClick,
                     onAudioClick = onAudioClick,
                     onSourcesClick = onSourcesClick,
+                    onChannelsClick = onChannelsClick,
                     onEpisodesClick = onEpisodesClick,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -311,6 +317,7 @@ internal fun PlayerControlsShell(
                         onSubtitleClick = onSubtitleClick,
                         onAudioClick = onAudioClick,
                         onSourcesClick = onSourcesClick,
+                        onChannelsClick = onChannelsClick,
                         onEpisodesClick = onEpisodesClick,
                         onNextEpisodeClick = onNextEpisodeClick,
                         onSwitchEngineClick = onSwitchEngineClick,
@@ -622,6 +629,7 @@ private fun ProgressControls(
     onSubtitleClick: () -> Unit,
     onAudioClick: () -> Unit,
     onSourcesClick: (() -> Unit)? = null,
+    onChannelsClick: (() -> Unit)? = null,
     onEpisodesClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -684,12 +692,22 @@ private fun ProgressControls(
                             onClick = onSourcesClick,
                         )
                     }
+                    if (onChannelsClick != null) {
+                        PlayerActionPillButton(
+                            label = stringResource(Res.string.live_tv_player_channels),
+                            icon = Icons.Rounded.Tv,
+                            onClick = onChannelsClick,
+                        )
+                    }
                     if (onEpisodesClick != null) {
                         PlayerActionPillButton(
                             label = stringResource(Res.string.compose_player_episodes),
                             painter = episodesPainter,
                             onClick = onEpisodesClick,
                         )
+                    }
+                    seekPreviewSyncAction()?.let {
+                        PlayerActionPillButton(stringResource(Res.string.player_seek_preview_sync), it, Icons.Rounded.Tune)
                     }
                 }
             }
@@ -708,8 +726,12 @@ internal fun PlayerSeekBar(
 ) {
     val seekDurationMs = durationMs.coerceAtLeast(1L)
     val seekDescription = stringResource(Res.string.player_seek_position)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isDragged by interactionSource.collectIsDraggedAsState()
     Column(modifier = modifier) {
+        SeekPreviewAboveTimeline(displayedPositionMs, durationMs, active = isDragged)
         Slider(
+            interactionSource = interactionSource,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(metrics.sliderTouchHeight)

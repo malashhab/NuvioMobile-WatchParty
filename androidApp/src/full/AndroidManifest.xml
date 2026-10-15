@@ -3,4 +3,7 @@
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Nuvio Reshaped: ExoPlayer keeps the seek buffer on the Java heap, so allow a larger one. -->
+    <application android:largeHeap="true" />
+
 </manifest>
