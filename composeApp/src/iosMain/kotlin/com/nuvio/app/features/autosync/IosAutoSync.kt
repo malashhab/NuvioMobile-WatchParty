@@ -103,12 +103,6 @@ internal class IosAutoSyncPlayerEngineController(
         coordinator.reset()
         base.clearExternalSubtitleAndSelect(trackIndex)
     }
-
-    // A manual delay replaces the synced one; a speed correction still applies to this subtitle.
-    override fun cancelForManualSubtitleDelay() {
-        coordinator.cancel()
-        AutoSyncSyncedSubtitle.clear()
-    }
 }
 
 internal class IosAutoSyncCoordinator(
