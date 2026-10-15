@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -142,6 +143,7 @@ fun LibraryScreen(
     }.collectAsStateWithLifecycle()
     val networkStatusUiState by NetworkStatusRepository.uiState.collectAsStateWithLifecycle()
     var observedOfflineState by remember { mutableStateOf(false) }
+    var showCalendar by rememberSaveable(ProfileRepository.activeProfileId) { mutableStateOf(false) }
     val serversUiState by remember {
         ServerRepository.ensureLoaded()
         ServerRepository.uiState
@@ -325,6 +327,15 @@ fun LibraryScreen(
                             modifier = Modifier.padding(horizontal = 16.dp),
                             actions = {
                                 if (sourceMode == LibraryViewMode.Saved) {
+                                    if (displaySettings.calendarEnabled) {
+                                        IconButton(onClick = { showCalendar = true }) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.CalendarMonth,
+                                                contentDescription = stringResource(Res.string.library_calendar_open),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
                                     LibraryListManagementButton()
                                     val targetLayout = if (displaySettings.layoutMode == LibraryLayoutMode.HORIZONTAL) {
                                         LibraryLayoutMode.VERTICAL
@@ -521,6 +532,13 @@ fun LibraryScreen(
                     }
                 }
             }
+        }
+        if (showCalendar && displaySettings.calendarEnabled) {
+            LibraryCalendar(
+                items = uiState.items,
+                onDismiss = { showCalendar = false },
+                onPosterClick = onPosterClick,
+            )
         }
     }
 }

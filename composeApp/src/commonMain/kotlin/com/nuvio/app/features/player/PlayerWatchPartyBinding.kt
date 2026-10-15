@@ -27,6 +27,7 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import nuvio.composeapp.generated.resources.Res
@@ -36,6 +37,10 @@ import nuvio.composeapp.generated.resources.watch_party_continuing_without
 import nuvio.composeapp.generated.resources.watch_party_default_controller
 import nuvio.composeapp.generated.resources.watch_party_finding_source
 import nuvio.composeapp.generated.resources.watch_party_follower_hint
+import nuvio.composeapp.generated.resources.watch_party_left_video
+import nuvio.composeapp.generated.resources.watch_party_left_video_paused
+import nuvio.composeapp.generated.resources.watch_party_pause_request_sent
+import nuvio.composeapp.generated.resources.watch_party_pause_requested
 import nuvio.composeapp.generated.resources.watch_party_source_missing
 import nuvio.composeapp.generated.resources.watch_party_unknown_member
 import nuvio.composeapp.generated.resources.watch_party_waiting_for
@@ -80,7 +85,8 @@ internal fun PlayerScreenRuntime.watchPartyClickHandler(): (() -> Unit)? = { sho
 internal fun PlayerScreenRuntime.handleWatchPartyTogglePlayback(): Boolean {
     val coordinator = watchParty?.coordinator ?: return false
     if (!coordinator.isController) {
-        showWatchPartyFollowerHint()
+        // Pausing a playing room asks the controller; anything else explains who is in control.
+        if (!coordinator.requestPauseFromFollower()) showWatchPartyFollowerHint()
         return true
     }
     controlsVisible = true
@@ -139,13 +145,17 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
                     nowMs = nowMs,
                     controllerId = { party.control.controllerId.value },
                     listener = PlayerWatchPartyEvents(this@BindWatchPartyEffects),
+                    wasRemoved = party.control::consumeRemoval,
                 ),
                 port = port,
             )
         }
         watchParty = session
         session?.coordinator?.start()
+        // Lets the room know who is actually in the video.
+        if (session != null) WatchPartyRoomController.setWatching(true)
         onDispose {
+            if (session != null) WatchPartyRoomController.setWatching(false)
             session?.coordinator?.stop()
             session?.seekReportJob?.cancel()
             session?.sourceSearchJob?.cancel()
@@ -169,7 +179,8 @@ internal fun PlayerScreenRuntime.BindWatchPartyEffects() {
     }
 
     LaunchedEffect(coordinator, party) {
-        party.control.controllerId.collect { coordinator.onControllerChanged() }
+        // The first value is the controller we started with, not a change.
+        party.control.controllerId.drop(1).collect { coordinator.onControllerChanged() }
     }
 
     LaunchedEffect(
@@ -219,6 +230,22 @@ private class PlayerWatchPartyEvents(
 
     override fun onWaitingForRoom() {
         runtime.scope.launch { NuvioToastController.show(getString(Res.string.watch_party_waiting_for_room)) }
+    }
+
+    override fun onMemberLeftVideo(memberId: String, paused: Boolean) {
+        runtime.showWatchPartyMembersToast(
+            if (paused) Res.string.watch_party_left_video_paused else Res.string.watch_party_left_video,
+            listOf(memberId),
+        )
+    }
+
+    override fun onPauseRequested(memberId: String) {
+        runtime.showWatchPartyMembersToast(Res.string.watch_party_pause_requested, listOf(memberId))
+    }
+
+    override fun onPauseRequestSent() {
+        val status = WatchPartyRoomController.status.value
+        runtime.showWatchPartyMembersToast(Res.string.watch_party_pause_request_sent, listOfNotNull(status.controllerId))
     }
 }
 

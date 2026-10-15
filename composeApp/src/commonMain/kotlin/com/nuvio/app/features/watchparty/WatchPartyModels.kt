@@ -100,6 +100,20 @@ data class WatchPartyRoom(
 data class WatchPartyMember(
     val memberId: String,
     val name: String,
+    /** In the player right now. Null from older app versions, which only announce themselves there. */
+    val watching: Boolean? = null,
+)
+
+/**
+ * The controller's answer to a follower's [WatchPartyMessage.Ping], carried inside its next update
+ * instead of a message of its own. [heldMs] is how long the controller waited before sending, which the
+ * follower subtracts so the round trip stays exact.
+ */
+@Serializable
+data class PingEcho(
+    val to: String,
+    val sentAtMs: Long,
+    val heldMs: Long,
 )
 
 @Serializable
@@ -119,6 +133,7 @@ sealed interface WatchPartyMessage {
         val playback: WatchPartyPlayback,
         /** Set while the room is held: get ready at this position, answer with [Ready], and wait. */
         val holdId: String? = null,
+        val pongs: List<PingEcho> = emptyList(),
     ) : WatchPartyMessage
 
     /** A member is loaded and positioned for the hold the controller announced. */
@@ -140,6 +155,21 @@ sealed interface WatchPartyMessage {
     @Serializable
     @SerialName("keep_alive")
     data class KeepAlive(
+        override val senderId: String,
+        val pongs: List<PingEcho> = emptyList(),
+    ) : WatchPartyMessage
+
+    /** A follower closed the player, so the controller stops waiting for them right away. */
+    @Serializable
+    @SerialName("leaving")
+    data class Leaving(
+        override val senderId: String,
+    ) : WatchPartyMessage
+
+    /** A follower pressed pause; only the controller can pause, so it's asked to. */
+    @Serializable
+    @SerialName("pause_request")
+    data class PauseRequest(
         override val senderId: String,
     ) : WatchPartyMessage
 
@@ -199,6 +229,14 @@ sealed interface WatchPartyMessage {
     @Serializable
     @SerialName("control_denied")
     data class ControlDenied(
+        override val senderId: String,
+        val memberId: String,
+    ) : WatchPartyMessage
+
+    /** The owner removes a member from the room. Only the owner's count; the member can join again. */
+    @Serializable
+    @SerialName("member_removed")
+    data class MemberRemoved(
         override val senderId: String,
         val memberId: String,
     ) : WatchPartyMessage

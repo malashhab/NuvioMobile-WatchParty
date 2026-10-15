@@ -90,6 +90,7 @@ internal fun LazyListScope.settingsRootContent(
     showAboutSection: Boolean = true,
     showAdvancedSection: Boolean = true,
     showSupportersContributorsPage: Boolean = true,
+    onNuvioReshapedClick: (() -> Unit)? = null,
 ) {
     if (showAccountSection) {
         item {
@@ -185,6 +186,7 @@ internal fun LazyListScope.settingsRootContent(
             }
         }
     }
+    if (showGeneralSection && onNuvioReshapedClick != null) nuvioReshapedRootSection(isTablet, onNuvioReshapedClick) // Nuvio RS hook
     if (showAboutSection) {
         item {
             val uriHandler = LocalUriHandler.current

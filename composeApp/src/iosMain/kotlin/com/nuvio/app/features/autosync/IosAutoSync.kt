@@ -15,6 +15,9 @@ import com.nuvio.app.features.streams.StreamSubtitle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.autosync_toast_failed
@@ -63,6 +66,11 @@ internal class IosAutoSyncPlayerEngineController(
     private val base: PlayerEngineController,
     private val coordinator: IosAutoSyncCoordinator,
 ) : PlayerEngineController by base, AutoSyncPlayerController {
+
+    override val autoSyncRetryState: StateFlow<AutoSyncRetryUiState>
+        get() = coordinator.retryState
+
+    override fun retryWithAnotherReference() = coordinator.retryWithAnotherReference()
 
     override fun setAutoSyncSubtitleCandidates(candidates: List<AutoSyncSubtitleCandidate>) =
         coordinator.setCandidates(candidates)
@@ -118,6 +126,13 @@ internal class IosAutoSyncCoordinator(
     private var appliedListener: ((subtitleUrl: String, delayMs: Int) -> Unit)? = null
     private var speedApplied = false
 
+    // "Try another reference": the subtitle we synced, the built-in track it matched, and the ones rejected.
+    private val _retryState = MutableStateFlow(AutoSyncRetryUiState())
+    val retryState: StateFlow<AutoSyncRetryUiState> = _retryState.asStateFlow()
+    private var syncedUrl: String? = null
+    private var referenceKey: String? = null
+    private var rejectedReferenceKeys: Set<String> = emptySet()
+
     fun setCandidates(value: List<AutoSyncSubtitleCandidate>) {
         candidates = value.distinctBy { it.url }
     }
@@ -136,6 +151,10 @@ internal class IosAutoSyncCoordinator(
     fun reset() {
         cancel()
         AutoSyncSyncedSubtitle.clear()
+        _retryState.value = AutoSyncRetryUiState()
+        syncedUrl = null
+        referenceKey = null
+        rejectedReferenceKeys = emptySet()
         if (speedApplied) {
             bridge.setSubtitleSpeed(1.0)
             speedApplied = false
@@ -157,9 +176,32 @@ internal class IosAutoSyncCoordinator(
             sourceUrl.startsWith("http://", ignoreCase = true)
         if (decideAutoSyncStart(enabled) == AutoSyncStartAction.ATTACH_ORIGINAL || !isHttp) return
 
-        val token = operationToken
         val language = candidates.firstOrNull { it.url == url }?.language?.takeIf { it.isNotBlank() }
             ?: getPreferredLanguage()
+        sync(url, language, candidateScope, excluded = emptySet(), retrying = false)
+    }
+
+    /** Matches the synced subtitle again, skipping every built-in track already tried. */
+    fun retryWithAnotherReference() {
+        val url = syncedUrl ?: return
+        val tried = referenceKey ?: return
+        if (_retryState.value.busy || _retryState.value.exhausted) return
+        rejectedReferenceKeys = rejectedReferenceKeys + tried
+        val language = candidates.firstOrNull { it.url == url }?.language?.takeIf { it.isNotBlank() }
+            ?: getPreferredLanguage()
+        _retryState.value = _retryState.value.copy(busy = true, status = AutoSyncRetryStatus.TRYING)
+        sync(url, language, AutoSyncCandidateScope.SELECTED_ONLY, excluded = rejectedReferenceKeys, retrying = true)
+    }
+
+    private fun sync(
+        url: String,
+        language: String?,
+        candidateScope: AutoSyncCandidateScope,
+        excluded: Set<String>,
+        retrying: Boolean,
+    ) {
+        cancel()
+        val token = operationToken
         job = scope.launch {
             val result = try {
                 PortableSubtitleAutoSync.run(
@@ -170,15 +212,16 @@ internal class IosAutoSyncCoordinator(
                     subtitleHeaders = getSubtitleHeaders,
                     alternatives = { candidateScope.alternativeCandidates(candidates) },
                     toleranceMs = AutoSyncPreferencesRepository.syncToleranceMs.value,
+                    excludedReferenceKeys = excluded,
                 )
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
-                PortableAutoSyncResult.NoMatch
+                null
             }
             if (token != operationToken) return@launch
-            when (result) {
-                is PortableAutoSyncResult.Fixed -> {
+            when {
+                result is PortableAutoSyncResult.Fixed -> {
                     val fix = result.fix
                     if (fix.subtitleUrl != url) {
                         // A better-fitting subtitle in the same language replaces the chosen one.
@@ -190,11 +233,23 @@ internal class IosAutoSyncCoordinator(
                     base.setSubtitleDelayMs(fix.delayMs)
                     appliedListener?.invoke(fix.subtitleUrl, fix.delayMs)
                     AutoSyncSyncedSubtitle.mark(fix.subtitleUrl)
+                    syncedUrl = fix.subtitleUrl
+                    referenceKey = result.referenceKey
+                    _retryState.value = AutoSyncRetryUiState(
+                        available = true,
+                        exhausted = !result.moreReferences,
+                        status = if (retrying) AutoSyncRetryStatus.UPDATED else AutoSyncRetryStatus.IDLE,
+                    )
                 }
-                PortableAutoSyncResult.NoReference -> showFailure(token, Res.string.autosync_toast_failed_no_reference)
-                PortableAutoSyncResult.SubtitleUnavailable,
-                PortableAutoSyncResult.NoMatch,
-                -> showFailure(token, Res.string.autosync_toast_failed)
+                // Retrying keeps the current timing when no other built-in track fits.
+                retrying -> _retryState.value = AutoSyncRetryUiState(
+                    available = true,
+                    exhausted = result != null,
+                    status = if (result == null) AutoSyncRetryStatus.FAILED else AutoSyncRetryStatus.EXHAUSTED,
+                )
+                result == PortableAutoSyncResult.NoReference ->
+                    showFailure(token, Res.string.autosync_toast_failed_no_reference)
+                else -> showFailure(token, Res.string.autosync_toast_failed)
             }
         }
     }

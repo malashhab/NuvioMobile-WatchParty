@@ -2,6 +2,7 @@ package com.nuvio.app.features.watchparty
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class WatchPartyControlTest {
@@ -132,5 +133,39 @@ class WatchPartyControlTest {
         lateConnection.send(WatchPartyMessage.StateRequest(senderId = "late"))
 
         assertEquals("sam", late.controllerId.value)
+    }
+
+    @Test
+    fun ownerCanRemoveAMemberAndOnlyThatMemberIsTold() {
+        owner.removeMember("sam")
+
+        assertTrue(sam.removed.value)
+        assertFalse(alex.removed.value)
+        assertFalse(owner.removed.value)
+    }
+
+    @Test
+    fun onlyTheOwnerCanRemoveSomeone() {
+        alex.removeMember("sam")
+        // A forged removal from someone else is ignored too.
+        alexConnection.send(WatchPartyMessage.MemberRemoved(senderId = "alex", memberId = "sam"))
+
+        assertFalse(sam.removed.value)
+    }
+
+    @Test
+    fun theOwnerCannotRemoveThemselves() {
+        owner.removeMember("owner")
+
+        assertFalse(owner.removed.value)
+    }
+
+    @Test
+    fun removingAMemberDropsTheirWaitingControlRequest() {
+        sam.requestControl("Sam")
+
+        owner.removeMember("sam")
+
+        assertTrue(owner.pendingRequests.value.isEmpty())
     }
 }

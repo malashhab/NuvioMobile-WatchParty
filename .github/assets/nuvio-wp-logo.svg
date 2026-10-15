@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><clipPath id="tile"><rect width="1024" height="1024" rx="230.4"/></clipPath></defs><g clip-path="url(#tile)"><rect width="1024" height="1024" fill="#000"/><g transform="translate(512 512) scale(0.92) translate(-526 -505)">
+    <defs>
+      <linearGradient id="g" x1="0.1" y1="0.05" x2="0.9" y2="0.95">
+        <stop offset="0" stop-color="#45D6EB"/><stop offset="0.5" stop-color="#3965D4"/><stop offset="1" stop-color="#B250EF"/>
+      </linearGradient>
+    </defs>
+    
+      <rect x="170" y="130" width="480" height="330" rx="66" fill="#000"/>
+      <rect x="170" y="130" width="480" height="330" rx="66" fill="url(#g)" opacity="0.42"/>
+    
+      <rect x="278" y="218" width="604" height="424" rx="98" fill="#000"/>
+      <rect x="300" y="240" width="560" height="380" rx="76" fill="url(#g)" opacity="1"/>
+    <polygon points="528.3,355 663.3,430 528.3,505" fill="#000" stroke="#000" stroke-width="24" stroke-linejoin="round"/>
+    <polygon points="561.564,399 617.364,430 561.564,461" fill="#fff" stroke="#fff" stroke-width="9.92" stroke-linejoin="round"/>
+    
+      <path d="M239.95999999999998 866 V835.2 Q239.95999999999998 762.16 335 762.16 Q430.04 762.16 430.04 835.2 V866 Z" fill="#000" stroke="#000" stroke-width="26" stroke-linejoin="round"/>
+      <circle cx="335" cy="690" r="62.28" fill="#000"/>
+      <path d="M239.95999999999998 866 V835.2 Q239.95999999999998 762.16 335 762.16 Q430.04 762.16 430.04 835.2 V866 Z" fill="url(#g)"/>
+      <circle cx="335" cy="690" r="49.28" fill="url(#g)"/>
+    
+      <path d="M639.96 866 V835.2 Q639.96 762.16 735 762.16 Q830.04 762.16 830.04 835.2 V866 Z" fill="#000" stroke="#000" stroke-width="26" stroke-linejoin="round"/>
+      <circle cx="735" cy="690" r="62.28" fill="#000"/>
+      <path d="M639.96 866 V835.2 Q639.96 762.16 735 762.16 Q830.04 762.16 830.04 835.2 V866 Z" fill="url(#g)"/>
+      <circle cx="735" cy="690" r="49.28" fill="url(#g)"/>
+    
+      <path d="M422.68 873 V836.6 Q422.68 750.28 535 750.28 Q647.32 750.28 647.32 836.6 V873 Z" fill="#000" stroke="#000" stroke-width="26" stroke-linejoin="round"/>
+      <circle cx="535" cy="665" r="71.24000000000001" fill="#000"/>
+      <path d="M422.68 873 V836.6 Q422.68 750.28 535 750.28 Q647.32 750.28 647.32 836.6 V873 Z" fill="url(#g)"/>
+      <circle cx="535" cy="665" r="58.24" fill="url(#g)"/></g></g></svg>

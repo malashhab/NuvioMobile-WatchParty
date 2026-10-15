@@ -2,10 +2,10 @@ package com.nuvio.app.features.autosync.portable
 
 import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.features.autosync.AutoSyncSubtitleCandidate
-import com.nuvio.app.features.autosync.AutoSyncSubtitleCueParser
 import com.nuvio.app.features.autosync.AutoSyncTimelineRetimeResult
 import com.nuvio.app.features.autosync.AutoSyncTimelineRetimer
 import com.nuvio.app.features.autosync.maxAlignmentShiftMs
+import com.nuvio.app.features.player.PlayerSubtitleCueParser
 import com.nuvio.app.features.player.SubtitleLanguageMatching
 import com.nuvio.app.features.player.SubtitleSyncCue
 import kotlinx.coroutines.CancellationException
@@ -30,7 +30,13 @@ internal data class SubtitleTimingFix(
 )
 
 internal sealed interface PortableAutoSyncResult {
-    data class Fixed(val fix: SubtitleTimingFix) : PortableAutoSyncResult
+    data class Fixed(
+        val fix: SubtitleTimingFix,
+        /** The built-in track it was matched against, so "try another reference" can skip it. */
+        val referenceKey: String,
+        /** More built-in tracks that could still be tried. */
+        val moreReferences: Boolean,
+    ) : PortableAutoSyncResult
     /** The video has no readable built-in subtitles to compare against. */
     data object NoReference : PortableAutoSyncResult
     /** The subtitle couldn't be downloaded or read. */
@@ -65,6 +71,8 @@ internal object PortableSubtitleAutoSync {
         subtitleHeaders: (String) -> Map<String, String>,
         alternatives: () -> List<AutoSyncSubtitleCandidate>,
         toleranceMs: Int,
+        /** Built-in tracks already rejected by the viewer ("try another reference"). */
+        excludedReferenceKeys: Set<String> = emptySet(),
         loadIndex: suspend () -> EmbeddedSubtitleIndexResult = {
             withTimeoutOrNull(INDEX_TIMEOUT_MS) {
                 MatroskaSubtitleIndex.load(HttpByteRangeSource(sourceUrl, sourceHeaders))
@@ -76,8 +84,18 @@ internal object PortableSubtitleAutoSync {
         val selectedDeferred = async { loadCues(selectedUrl, subtitleHeaders(selectedUrl), loadSubtitle) }
 
         val references = when (val index = indexDeferred.await()) {
-            is EmbeddedSubtitleIndexResult.Found -> rankReferences(index.tracks, selectedLanguage)
+            is EmbeddedSubtitleIndexResult.Found ->
+                rankReferences(index.tracks.filter { it.key !in excludedReferenceKeys }, selectedLanguage, limit = Int.MAX_VALUE)
             else -> emptyList()
+        }
+        val fixed = { url: String, match: ReferenceMatch ->
+            toFix(url, match.result, toleranceMs)?.let { fix ->
+                PortableAutoSyncResult.Fixed(
+                    fix = fix,
+                    referenceKey = match.reference.key,
+                    moreReferences = references.size > 1,
+                )
+            }
         }
         if (references.isEmpty()) {
             selectedDeferred.cancel()
@@ -86,8 +104,8 @@ internal object PortableSubtitleAutoSync {
 
         val selectedCues = selectedDeferred.await()
         if (selectedCues != null) {
-            val fix = match(references, selectedCues)?.let { toFix(selectedUrl, it, toleranceMs) }
-            if (fix != null) return@coroutineScope PortableAutoSyncResult.Fixed(fix)
+            val result = match(references, selectedCues)?.let { fixed(selectedUrl, it) }
+            if (result != null) return@coroutineScope result
         }
 
         val language = selectedLanguage?.takeIf { it.isNotBlank() }
@@ -100,9 +118,8 @@ internal object PortableSubtitleAutoSync {
             .toList()
         for (candidate in others) {
             val cues = loadCues(candidate.url, subtitleHeaders(candidate.url), loadSubtitle) ?: continue
-            val result = match(references, cues) ?: continue
-            val fix = toFix(candidate.url, result, toleranceMs) ?: continue
-            return@coroutineScope PortableAutoSyncResult.Fixed(fix)
+            val result = match(references, cues)?.let { fixed(candidate.url, it) } ?: continue
+            return@coroutineScope result
         }
         if (selectedCues == null && others.isEmpty()) {
             PortableAutoSyncResult.SubtitleUnavailable
@@ -115,6 +132,7 @@ internal object PortableSubtitleAutoSync {
     internal fun rankReferences(
         tracks: List<EmbeddedSubtitleReference>,
         language: String?,
+        limit: Int = MAX_REFERENCES_TRIED,
     ): List<EmbeddedSubtitleReference> {
         val usable = tracks.filter { !it.forced && !it.commentary && !it.describesVideo }
             .ifEmpty { tracks.filter { !it.commentary } }
@@ -125,16 +143,19 @@ internal object PortableSubtitleAutoSync {
                     target != null && SubtitleLanguageMatching.matchesLanguageCode(it.language, target)
                 }.thenByDescending { it.cues.size },
             )
-            .take(MAX_REFERENCES_TRIED)
+            .take(limit)
     }
+
+    private class ReferenceMatch(val reference: EmbeddedSubtitleReference, val result: AutoSyncTimelineRetimeResult)
 
     private suspend fun match(
         references: List<EmbeddedSubtitleReference>,
         target: List<SubtitleSyncCue>,
-    ): AutoSyncTimelineRetimeResult? = withContext(Dispatchers.Default) {
+    ): ReferenceMatch? = withContext(Dispatchers.Default) {
         val context = currentCoroutineContext()
         val targetActivity = AutoSyncTimelineRetimer.prepareUnitActivity(target)
-        for (reference in references) {
+        // The best few are enough; more rarely help and each one costs a full comparison.
+        for (reference in references.take(MAX_REFERENCES_TRIED)) {
             context.ensureActive()
             val result = AutoSyncTimelineRetimer.retime(
                 reference = reference.cues,
@@ -151,7 +172,7 @@ internal object PortableSubtitleAutoSync {
                 preparedTargetActivity = targetActivity,
                 cancellationCheck = { context.ensureActive() },
             )
-            if (result != null && result.confident) return@withContext result
+            if (result != null && result.confident) return@withContext ReferenceMatch(reference, result)
         }
         null
     }
@@ -208,15 +229,8 @@ internal object PortableSubtitleAutoSync {
             null
         } ?: return null
         return withContext(Dispatchers.Default) {
-            val context = currentCoroutineContext()
             try {
-                AutoSyncTimelineRetimer.normalizeExternalTimeline(
-                    AutoSyncSubtitleCueParser.parse(
-                        text = text,
-                        sourceUrl = url,
-                        cancellationCheck = { context.ensureActive() },
-                    ),
-                )
+                AutoSyncTimelineRetimer.normalizeExternalTimeline(PlayerSubtitleCueParser.parse(text = text, sourceUrl = url))
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {

@@ -2,7 +2,6 @@ package com.nuvio.app
 
 import android.content.Intent
 import android.content.res.Configuration
-import com.nuvio.app.features.autosync.AutoSyncPreferencesAndroid
 import android.os.Bundle
 import androidx.activity.compose.setContent
 
@@ -18,6 +17,9 @@ import com.nuvio.app.core.storage.PlatformLocalAccountDataCleaner
 import com.nuvio.app.core.sync.SyncClientIdentityStorage
 import com.nuvio.app.features.addons.AddonHttpClientProvider
 import com.nuvio.app.features.addons.AddonStorage
+import com.nuvio.app.features.autosync.AutoSyncPreferencesAndroid
+import com.nuvio.app.features.player.seekpreview.SeekrKeyPreferencesAndroid
+import com.nuvio.app.features.pillnav.PillNavPreferencesAndroid
 import com.nuvio.app.features.collection.CollectionMobileSettingsStorage
 import com.nuvio.app.features.collection.CollectionStorage
 import com.nuvio.app.features.debrid.DebridSettingsStorage
@@ -38,6 +40,9 @@ import com.nuvio.app.features.player.ExternalPlayerPlatform
 import com.nuvio.app.features.player.SubtitleFileCache
 import com.nuvio.app.features.player.PlayerPictureInPictureManager
 import com.nuvio.app.features.player.PipRemoteActionReceiver
+import com.nuvio.app.features.reshaped.livetv.LiveTvIncomingIntent
+import com.nuvio.app.features.reshaped.livetv.LiveTvPlaylistFileBridge
+import com.nuvio.app.features.reshaped.livetv.LiveTvStorage
 import com.nuvio.app.features.p2p.P2pSettingsStorage
 import com.nuvio.app.features.p2p.P2pStreamingEngine
 import com.nuvio.app.features.plugins.PluginStorage
@@ -69,6 +74,7 @@ import com.nuvio.app.features.watched.WatchedStorage
 import com.nuvio.app.features.streams.StreamLinkCacheStorage
 import com.nuvio.app.features.streams.StreamBadgeSettingsStorage
 import com.nuvio.app.features.streams.BingeGroupCacheStorage
+import com.nuvio.app.features.streams.ConnectionSpeedStorage
 import com.nuvio.app.features.watchprogress.ContinueWatchingEnrichmentStorage
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesStorage
 import com.nuvio.app.features.watchprogress.ResumePromptStorage
@@ -89,7 +95,6 @@ open class MainActivity : AppCompatActivity() {
         SentrySettingsStorage.initialize(applicationContext)
         SentryInitializer.start(application)
         super.onCreate(savedInstanceState)
-        AutoSyncPreferencesAndroid.initialize(applicationContext) // AutoSync hook
         window.setBackgroundDrawableResource(R.color.nuvio_background)
         pipRemoteActionReceiver = PipRemoteActionReceiver.register(this)
         SyncClientIdentityStorage.initialize(applicationContext)
@@ -103,6 +108,10 @@ open class MainActivity : AppCompatActivity() {
         com.nuvio.app.features.shuffle.EpisodeShuffleStorage.initialize(applicationContext)
         HomeCatalogSettingsStorage.initialize(applicationContext)
         PlayerSettingsStorage.initialize(applicationContext)
+        AutoSyncPreferencesAndroid.initialize(applicationContext) // AutoSync hook
+        SeekrKeyPreferencesAndroid.initialize(applicationContext) // Seekr hook
+        PillNavPreferencesAndroid.initialize(applicationContext) // Pill nav hook
+        com.nuvio.app.features.player.volumeboost.VolumeBoostPreferencesAndroid.initialize(applicationContext) // Volume boost hook
         PlayerTrackPreferenceStorage.initialize(applicationContext)
         P2pSettingsStorage.initialize(applicationContext)
         P2pStreamingEngine.initialize(applicationContext)
@@ -140,7 +149,11 @@ open class MainActivity : AppCompatActivity() {
         StreamLinkCacheStorage.initialize(applicationContext)
         StreamBadgeSettingsStorage.initialize(applicationContext)
         BingeGroupCacheStorage.initialize(applicationContext)
+        ConnectionSpeedStorage.initialize(applicationContext) // AutoSync hook
         PluginStorage.initialize(applicationContext)
+        LiveTvStorage.initialize(applicationContext) // Nuvio RS Live TV hook
+        LiveTvPlaylistFileBridge.bindActivity(this) // Nuvio RS Live TV hook
+        com.nuvio.app.features.reshaped.sync.ReshapedSyncAndroid.install(applicationContext) // Nuvio RS hook: sync through the viewer's Google account
         CollectionMobileSettingsStorage.initialize(applicationContext)
         CollectionStorage.initialize(applicationContext)
         DownloadsStorage.initialize(applicationContext)
@@ -177,6 +190,7 @@ open class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        LiveTvPlaylistFileBridge.unbindActivity(this) // Nuvio RS Live TV hook
         EpisodeReleaseNotificationPlatform.unbindActivity(this)
         val receiver = pipRemoteActionReceiver
         if (receiver != null) {
@@ -184,6 +198,12 @@ open class MainActivity : AppCompatActivity() {
             pipRemoteActionReceiver = null
         }
         super.onDestroy()
+    }
+
+    @Deprecated("Used by the isolated Live TV document picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (LiveTvPlaylistFileBridge.handleActivityResult(requestCode, resultCode, data)) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(
@@ -198,6 +218,7 @@ open class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIncomingAppIntent(intent: Intent?) {
+        if (LiveTvIncomingIntent.accept(this, intent)) return
         val appUrl = intent?.dataString?.trim().orEmpty()
         if (appUrl.isBlank()) return
         handleAppUrl(appUrl)

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Menganalisis…</string>
+    <string name="autosync_toast_synced">Auto Sync • Subtitle disinkronkan</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Beralih ke subtitle yang lebih cocok</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Subtitle sudah sinkron</string>
+    <string name="autosync_toast_failed">Auto Sync • Sinkronisasi gagal • waktu subtitle tidak diubah</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Tidak ada subtitle tertanam untuk dibandingkan • waktu subtitle tidak diubah</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Format subtitle tidak didukung • waktu subtitle tidak diubah</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Tidak ditemukan kecocokan • menyinkronkan ke audio…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Disinkronkan ke referensi lain</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Tidak ditemukan referensi yang lebih baik</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Coba ulang dengan referensi lain gagal • sinkronisasi saat ini dipertahankan</string>
+    <string name="autosync_label_synced">Disinkronkan otomatis</string>
+</resources>

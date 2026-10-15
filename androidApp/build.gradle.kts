@@ -95,6 +95,8 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
+            // sherpa-onnx's JNI library only needs libonnxruntime; its C/C++ API libraries are unused.
+            excludes += listOf("lib/*/libsherpa-onnx-c-api.so", "lib/*/libsherpa-onnx-cxx-api.so")
             pickFirsts += listOf(
                 "lib/*/libc++_shared.so",
                 "lib/*/libavcodec.so",
@@ -188,3 +190,4 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.composeMultiplatform.get()}")
     debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.composeMultiplatform.get()}")
 }
+

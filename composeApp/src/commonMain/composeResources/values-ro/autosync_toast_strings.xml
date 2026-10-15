@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Se analizează…</string>
+    <string name="autosync_toast_synced">Auto Sync • Subtitrări sincronizate</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • S-a trecut la o subtitrare care se potrivește mai bine</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Subtitrările sunt deja sincronizate</string>
+    <string name="autosync_toast_failed">Auto Sync • Sincronizare eșuată • sincronizarea subtitrării nu a fost modificată</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Nu există subtitrări încorporate pentru comparație • sincronizarea subtitrării nu a fost modificată</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Formatul subtitrării nu este acceptat • sincronizarea subtitrării nu a fost modificată</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Nicio potrivire găsită • se sincronizează după sunet…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Sincronizat după altă referință</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Nu s-a găsit o referință mai bună</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Reîncercarea cu altă referință a eșuat • sincronizarea actuală păstrată</string>
+    <string name="autosync_label_synced">Sincronizat automat</string>
+</resources>

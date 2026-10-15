@@ -1,6 +1,7 @@
 package com.nuvio.app.features.watchparty
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -21,7 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -392,6 +396,8 @@ private fun MemberList(status: WatchPartyStatus) {
     val tokens = MaterialTheme.nuvio
     val ownerLabel = stringResource(Res.string.watch_party_owner)
     val controllingLabel = stringResource(Res.string.watch_party_controlling)
+    // The owner can remove anyone else; removing asks first, like leaving does.
+    var removing by remember { mutableStateOf<WatchPartyMember?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s4)) {
         Text(
@@ -418,13 +424,49 @@ private fun MemberList(status: WatchPartyStatus) {
                     color = tokens.colors.textPrimary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (tags.isNotEmpty()) {
-                    Text(
-                        text = tags.joinToString(" · "),
-                        color = tokens.colors.textMuted,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (tags.isNotEmpty()) {
+                        Text(
+                            text = tags.joinToString(" · "),
+                            color = tokens.colors.textMuted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (status.isOwner && member.memberId != status.localMemberId) {
+                        Text(
+                            text = stringResource(Res.string.watch_party_remove),
+                            color = tokens.colors.danger,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(NuvioTokens.Space.s8))
+                                .clickable(role = Role.Button) { removing = member }
+                                .padding(horizontal = NuvioTokens.Space.s8, vertical = NuvioTokens.Space.s4),
+                        )
+                    }
                 }
+            }
+        }
+
+        // Still in the room? They may have left while we were asking.
+        removing?.takeIf { pending -> status.members.any { it.memberId == pending.memberId } }?.let { member ->
+            Text(
+                text = stringResource(Res.string.watch_party_remove_confirm, member.name),
+                color = tokens.colors.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            DialogButtons {
+                DialogButton(text = stringResource(Res.string.watch_party_stay), onClick = { removing = null })
+                DialogButton(
+                    text = stringResource(Res.string.watch_party_remove),
+                    onClick = {
+                        WatchPartyRoomController.removeMember(member.memberId)
+                        removing = null
+                    },
+                    style = DialogButtonStyle.Destructive,
+                )
             }
         }
     }

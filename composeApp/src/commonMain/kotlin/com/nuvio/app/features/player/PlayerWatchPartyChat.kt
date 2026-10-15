@@ -88,11 +88,11 @@ internal fun watchPartyChatUnreadCount(): Int {
     return state.unreadCount
 }
 
-/** How many people are in the room, shown on the Watch Party button; 0 outside a room. */
+/** How many people are in the video, shown on the Watch Party button; 0 outside a room. */
 @Composable
 internal fun watchPartyMemberCount(): Int {
     val status by WatchPartyRoomController.status.collectAsStateWithLifecycle()
-    return if (status.code != null) status.members.size else 0
+    return if (status.code != null) status.watchingCount else 0
 }
 
 @Composable

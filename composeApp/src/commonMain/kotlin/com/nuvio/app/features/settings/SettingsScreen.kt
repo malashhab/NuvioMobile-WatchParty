@@ -714,6 +714,7 @@ private fun MobileSettingsScreen(
                             onAccountClick = onAccountClick,
                             onSwitchProfileClick = onSwitchProfile,
                             showSupportersContributorsPage = AppFeaturePolicy.supportersContributorsPageEnabled,
+                            onNuvioReshapedClick = { onPageChange(SettingsPage.NuvioReshaped) }, // Nuvio RS hook
                         )
                     }
                 }
@@ -753,6 +754,7 @@ private fun MobileSettingsScreen(
                 SettingsPage.Streams -> streamsSettingsContent(
                     isTablet = false,
                 )
+                SettingsPage.NuvioReshaped -> nuvioReshapedSettingsContent(isTablet = false) // Nuvio RS hook
                 SettingsPage.Appearance -> appearanceSettingsContent(
                     isTablet = false,
                     selectedTheme = selectedTheme,
@@ -1152,6 +1154,7 @@ private fun TabletSettingsScreen(
                                 showAboutSection = activeCategory == SettingsCategory.About,
                                 showAdvancedSection = activeCategory == SettingsCategory.Advanced,
                                 showSupportersContributorsPage = AppFeaturePolicy.supportersContributorsPageEnabled,
+                                onNuvioReshapedClick = { openInlinePage(SettingsPage.NuvioReshaped) }, // Nuvio RS hook
                             )
                         }
                     }
@@ -1191,6 +1194,7 @@ private fun TabletSettingsScreen(
                     SettingsPage.Streams -> streamsSettingsContent(
                         isTablet = true,
                     )
+                    SettingsPage.NuvioReshaped -> nuvioReshapedSettingsContent(isTablet = true) // Nuvio RS hook
                     SettingsPage.Appearance -> appearanceSettingsContent(
                         isTablet = true,
                         selectedTheme = selectedTheme,

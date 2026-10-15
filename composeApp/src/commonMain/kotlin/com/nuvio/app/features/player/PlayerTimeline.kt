@@ -41,6 +41,7 @@ import com.nuvio.app.core.ui.themePalette
 import com.nuvio.app.core.ui.nuvioTypeScale
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.nuvio.app.core.i18n.localizedEpisodeTitle
 
 internal val PlayerTimelineContentInset = 2.dp
 
@@ -71,8 +72,9 @@ internal fun PlayerTimelineDetails(
         )
         if (seasonNumber != null && episodeNumber != null) {
             val episodeCode = stringResource(Res.string.compose_player_episode_code_full, seasonNumber, episodeNumber)
+            val displayEpisodeTitle = localizedEpisodeTitle(episodeTitle, episodeNumber)
             Text(
-                text = if (episodeTitle.isNullOrBlank()) episodeCode else "$episodeCode • $episodeTitle",
+                text = if (displayEpisodeTitle.isNullOrBlank()) episodeCode else "$episodeCode • $displayEpisodeTitle",
                 style = typeScale.bodyMd.copy(fontSize = metrics.episodeInfoSize),
                 color = Color.White.copy(alpha = 0.9f),
                 maxLines = 1,
@@ -122,6 +124,7 @@ internal fun PlayerTimeline(
     val isPressed by interactionSource.collectIsPressedAsState()
     val isDragged by interactionSource.collectIsDraggedAsState()
     val isInteracting = enabled && durationMs > 0L && (isPressed || isDragged)
+    val cueIntervalMs = seekPreviewCueIntervalMs()
     val trackThickness by animateDpAsState(
         targetValue = if (isInteracting) 10.dp else 6.dp,
         animationSpec = tween(durationMillis = if (isInteracting) 140 else 180),
@@ -129,6 +132,7 @@ internal fun PlayerTimeline(
     )
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        SeekPreviewAboveTimeline(displayedPositionMs, durationMs, active = isInteracting)
         Slider(
             value = displayedPositionMs.coerceIn(0L, durationMs).toFloat(),
             onValueChange = { value ->
@@ -171,6 +175,7 @@ internal fun PlayerTimeline(
                                 size = Size(size.width * (state.value / rangeEnd).coerceIn(0f, 1f), trackHeight),
                                 cornerRadius = radius,
                             )
+                            drawSeekPreviewCueTicks(cueIntervalMs, durationMs, trackOrigin.y, trackHeight)
                         },
                 )
             },

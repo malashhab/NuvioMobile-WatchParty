@@ -22,6 +22,8 @@ class WatchPartyCoordinator(
     /** Who controls playback right now; see [WatchPartyControl]. */
     private val controllerId: () -> String,
     private val listener: Listener = object : Listener {},
+    /** True once for a member the owner just removed; see [WatchPartyControl.consumeRemoval]. */
+    private val wasRemoved: (memberId: String) -> Boolean = { false },
     private val driftToleranceMs: Long = DEFAULT_DRIFT_TOLERANCE_MS,
     private val settleWindowMs: Long = DEFAULT_SETTLE_WINDOW_MS,
     private val epoch: String = Uuid.random().toString(),
@@ -38,6 +40,15 @@ class WatchPartyCoordinator(
 
         /** Follower: we're ready, but the room is still waiting for others. */
         fun onWaitingForRoom() {}
+
+        /** Someone closed the video; [paused] when the room was playing and stopped for them. */
+        fun onMemberLeftVideo(memberId: String, paused: Boolean) {}
+
+        /** Controller: a follower pressed pause. */
+        fun onPauseRequested(memberId: String) {}
+
+        /** Follower: our pause request went to the controller. */
+        fun onPauseRequestSent() {}
     }
 
     val isController: Boolean
@@ -61,6 +72,20 @@ class WatchPartyCoordinator(
     // new actions.
     private var controllerSettleUntilMs = Long.MIN_VALUE
 
+    // Pings waiting for an answer: follower to (their send time, when we received it). Answered inside
+    // our next update rather than as separate messages, which every follower would otherwise receive.
+    private val pendingPings = mutableMapOf<String, Pair<Long, Long>>()
+
+    // The source description only matters when it changes, so it's sent a few times after each change
+    // (in case one update is lost) and then left out of routine updates.
+    private var lastSentSource: WatchPartySource? = null
+    private var lastSentContent: WatchPartyContent? = null
+    private var sourceRepeatsLeft = 0
+
+    // A seek usually starts loading first, which already holds the room at the new position.
+    private var holdStartedAtMs: Long? = null
+    private var holdPositionMs: Long? = null
+
     // Follower side.
     private var controllerEpoch: String? = null
     private var lastControllerSeq = 0L
@@ -81,6 +106,12 @@ class WatchPartyCoordinator(
     private val roundTripSamplesMs = ArrayDeque<Long>()
     private var oneWayLatencyMs = 0L
 
+    // Ping often while settling in, after reconnecting or when sync drifts; rarely once things are steady.
+    private var lastPingAtMs: Long? = null
+    private var lastPauseRequestAtMs: Long? = null
+    private var fastPingUntilMs = Long.MIN_VALUE
+    private var lastStateRequestAtMs: Long? = null
+
     // Small gaps are closed by playing slightly faster or slower instead of seeking: -1 slower, 0 normal, 1 faster.
     private var speedNudge = 0
     private var appliedSpeed: Float? = null
@@ -100,12 +131,14 @@ class WatchPartyCoordinator(
         if (started) return
         started = true
         lastContactAtMs = nowMs()
+        pingFastFor(SETTLE_IN_FAST_PING_MS)
         transport.setListener(::onMessage)
         if (isController) broadcastState() else requestState()
     }
 
     fun stop() {
         if (!started) return
+        if (!isController) transport.send(WatchPartyMessage.Leaving(senderId = localMemberId))
         started = false
         transport.setListener(null)
         // Don't leave the player running slightly fast or slow after leaving the room.
@@ -149,9 +182,27 @@ class WatchPartyCoordinator(
         return true
     }
 
+    /**
+     * A follower pressed pause while the room plays: asks the controller instead. Returns false when
+     * that doesn't apply (we're in control, or the room isn't playing), so the caller can explain.
+     */
+    fun requestPauseFromFollower(): Boolean {
+        if (!started || isController || targetPlayback?.isPlaying != true) return false
+        val now = nowMs()
+        val last = lastPauseRequestAtMs
+        // Repeated taps within a few seconds count as one request.
+        if (last == null || now - last >= PAUSE_REQUEST_INTERVAL_MS) {
+            lastPauseRequestAtMs = now
+            transport.send(WatchPartyMessage.PauseRequest(senderId = localMemberId))
+            listener.onPauseRequestSent()
+        }
+        return true
+    }
+
     /** Call after the controller seeks; playing rooms line up at the new position before continuing. */
     fun onLocalSeek() {
         if (!started || !isController) return
+        if (isHoldingAtCurrentPosition()) return
         if (sentPlaying || readyCheck.isHolding) startHold(restart = true) else broadcastState()
     }
 
@@ -159,8 +210,7 @@ class WatchPartyCoordinator(
     fun onHeartbeat() {
         if (!started) return
         if (!isController) {
-            // Measures the network delay, and lets the controller know we're still in the player.
-            transport.send(WatchPartyMessage.Ping(senderId = localMemberId, sentAtMs = nowMs()))
+            pingIfDue()
             return
         }
         val holdId = readyCheck.holdId
@@ -169,7 +219,7 @@ class WatchPartyCoordinator(
             nowMs() < controllerSettleUntilMs -> Unit
             player.currentPlayback() != null -> broadcastState()
             // Loading, so there is no position to share; still let followers know we're here.
-            else -> transport.send(WatchPartyMessage.KeepAlive(senderId = localMemberId))
+            else -> transport.send(WatchPartyMessage.KeepAlive(senderId = localMemberId, pongs = takePingEchoes()))
         }
     }
 
@@ -191,7 +241,9 @@ class WatchPartyCoordinator(
     /** Call when the connection comes back after dropping. */
     fun onReconnected() {
         if (!started) return
-        if (isController) broadcastState() else requestState()
+        pingFastFor(SETTLE_IN_FAST_PING_MS)
+        // Updates sent while we were away were dropped, so include the source again.
+        if (isController) broadcastState(forceSource = true) else requestState()
     }
 
     /** Call when control moves to another member. */
@@ -212,8 +264,12 @@ class WatchPartyCoordinator(
         targetHoldId = null
         acknowledgedHoldId = null
         heldSinceMs = null
+        pendingPings.clear()
+        lastSentSource = null
+        lastSentContent = null
         lastContactAtMs = nowMs()
-        if (isController) broadcastState() else requestState()
+        pingFastFor(SETTLE_IN_FAST_PING_MS)
+        if (isController) broadcastState() else requestState(force = true)
     }
 
     private fun onMessage(message: WatchPartyMessage) {
@@ -222,16 +278,40 @@ class WatchPartyCoordinator(
         if (isController) followerSeenAtMs[message.senderId] = nowMs()
         when (message) {
             is WatchPartyMessage.StateRequest -> if (isController) {
+                // A newcomer needs the full picture, source included.
                 val holdId = readyCheck.holdId
-                if (holdId != null) sendConstructedState(isPlaying = false, holdId = holdId) else broadcastState()
+                if (holdId != null) {
+                    sendConstructedState(isPlaying = false, holdId = holdId, forceSource = true)
+                } else {
+                    broadcastState(forceSource = true)
+                }
             }
             is WatchPartyMessage.State -> onControllerState(message)
-            is WatchPartyMessage.KeepAlive -> if (!isController && message.senderId == controllerId()) onControllerContact()
-            is WatchPartyMessage.Ping -> if (isController) {
-                transport.send(
-                    WatchPartyMessage.Pong(senderId = localMemberId, to = message.senderId, sentAtMs = message.sentAtMs),
-                )
+            is WatchPartyMessage.KeepAlive -> if (!isController && message.senderId == controllerId()) {
+                recordPingEchoes(message.pongs)
+                onControllerContact()
             }
+            is WatchPartyMessage.Ping -> if (isController) {
+                pendingPings[message.senderId] = message.sentAtMs to nowMs()
+            }
+            is WatchPartyMessage.Leaving -> {
+                // Someone the owner removed is expected to go; that's no reason to stop the video.
+                val removed = wasRemoved(message.senderId)
+                var paused = false
+                if (isController) {
+                    followerSeenAtMs.remove(message.senderId)
+                    followerStalledSinceMs.remove(message.senderId)
+                    pendingPings.remove(message.senderId)
+                    // Stop for everyone when someone walks away mid-video, rather than leave them behind.
+                    if (!removed && (sentPlaying || readyCheck.isHolding)) paused = requestPause()
+                    if (!paused) evaluateHold()
+                }
+                if (!removed) listener.onMemberLeftVideo(message.senderId, paused)
+            }
+            is WatchPartyMessage.PauseRequest -> if (isController && sentPlaying) {
+                listener.onPauseRequested(message.senderId)
+            }
+            // Separate pongs come only from older versions of the app.
             is WatchPartyMessage.Pong -> if (
                 !isController && message.to == localMemberId && message.senderId == controllerId()
             ) {
@@ -276,7 +356,12 @@ class WatchPartyCoordinator(
 
     private fun startHold(restart: Boolean = false) {
         if (restart) readyCheck.cancel()
+        val wasHolding = readyCheck.isHolding
         val holdId = readyCheck.start(idPrefix = epoch, nowMs = nowMs(), members = activeFollowers())
+        if (!wasHolding) {
+            holdStartedAtMs = nowMs()
+            holdPositionMs = player.currentPositionMs()
+        }
         log.d { "Holding the room until everyone is ready ($holdId)" }
         player.pause()
         controllerSettleUntilMs = nowMs() + settleWindowMs
@@ -327,13 +412,22 @@ class WatchPartyCoordinator(
         return followerSeenAtMs.filterValues { now - it < FOLLOWER_ACTIVE_MS }.keys - givenUpOn
     }
 
-    private fun broadcastState() {
-        // While the controller is still loading, followers wait for the first real state.
-        val playback = player.currentPlayback() ?: return
-        send(playback, holdId = null)
+    /** True when the loading that a seek causes already started a hold here, so the seek needn't start another. */
+    private fun isHoldingAtCurrentPosition(): Boolean {
+        val startedAt = holdStartedAtMs ?: return false
+        if (!readyCheck.isHolding || nowMs() - startedAt > HOLD_REUSE_MS) return false
+        val heldAt = holdPositionMs ?: return false
+        val now = player.currentPositionMs() ?: return false
+        return abs(now - heldAt) <= driftToleranceMs
     }
 
-    private fun sendConstructedState(isPlaying: Boolean, holdId: String?) {
+    private fun broadcastState(forceSource: Boolean = false) {
+        // While the controller is still loading, followers wait for the first real state.
+        val playback = player.currentPlayback() ?: return
+        send(playback, holdId = null, forceSource = forceSource)
+    }
+
+    private fun sendConstructedState(isPlaying: Boolean, holdId: String?, forceSource: Boolean = false) {
         val content = player.currentContent() ?: return
         val positionMs = player.currentPositionMs() ?: return
         send(
@@ -342,28 +436,75 @@ class WatchPartyCoordinator(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 source = player.currentSource(),
+                speed = player.currentPlayback()?.speed ?: 1f,
             ),
             holdId = holdId,
+            forceSource = forceSource,
         )
     }
 
-    private fun send(playback: WatchPartyPlayback, holdId: String?) {
+    private fun send(playback: WatchPartyPlayback, holdId: String?, forceSource: Boolean = false) {
         sentPlaying = playback.isPlaying
+        if (forceSource || playback.source != lastSentSource || playback.content != lastSentContent) {
+            sourceRepeatsLeft = SOURCE_REPEATS
+        }
+        lastSentSource = playback.source
+        lastSentContent = playback.content
+        val includeSource = sourceRepeatsLeft > 0
+        if (includeSource) sourceRepeatsLeft--
         transport.send(
             WatchPartyMessage.State(
                 senderId = localMemberId,
                 epoch = epoch,
                 seq = nextSeq++,
-                playback = playback,
+                playback = if (includeSource) playback else playback.copy(source = null),
                 holdId = holdId,
+                pongs = takePingEchoes(),
             ),
         )
     }
 
+    /** Answers to the pings received since our last update, with how long each waited here. */
+    private fun takePingEchoes(): List<PingEcho> {
+        if (pendingPings.isEmpty()) return emptyList()
+        val now = nowMs()
+        val echoes = pendingPings.map { (memberId, times) ->
+            val (sentAtMs, receivedAtMs) = times
+            PingEcho(to = memberId, sentAtMs = sentAtMs, heldMs = (now - receivedAtMs).coerceAtLeast(0L))
+        }
+        pendingPings.clear()
+        return echoes
+    }
+
     // Follower side.
 
-    private fun requestState() {
+    /** One request is enough; joining otherwise asks up to three times in a row (start, connect, control). */
+    private fun requestState(force: Boolean = false) {
+        val now = nowMs()
+        val last = lastStateRequestAtMs
+        if (!force && last != null && now - last < STATE_REQUEST_DEDUPE_MS) return
+        lastStateRequestAtMs = now
         transport.send(WatchPartyMessage.StateRequest(senderId = localMemberId))
+    }
+
+    private fun pingIfDue() {
+        val now = nowMs()
+        val intervalMs = if (now < fastPingUntilMs) FAST_PING_INTERVAL_MS else SLOW_PING_INTERVAL_MS
+        val last = lastPingAtMs
+        if (last != null && now - last < intervalMs - PING_INTERVAL_SLACK_MS) return
+        lastPingAtMs = now
+        transport.send(WatchPartyMessage.Ping(senderId = localMemberId, sentAtMs = now))
+    }
+
+    private fun pingFastFor(durationMs: Long) {
+        fastPingUntilMs = maxOf(fastPingUntilMs, nowMs() + durationMs)
+    }
+
+    // Round trip = time since we sent the ping, minus the time it waited at the controller.
+    private fun recordPingEchoes(echoes: List<PingEcho>) {
+        echoes.firstOrNull { it.to == localMemberId }?.let { echo ->
+            recordRoundTrip(nowMs() - echo.sentAtMs - echo.heldMs)
+        }
     }
 
     private fun onControllerState(message: WatchPartyMessage.State) {
@@ -372,8 +513,12 @@ class WatchPartyCoordinator(
         if (message.epoch == controllerEpoch && message.seq <= lastControllerSeq) return
         controllerEpoch = message.epoch
         lastControllerSeq = message.seq
+        recordPingEchoes(message.pongs)
         val previous = targetPlayback
-        val next = message.playback
+        // Routine updates leave out an unchanged source; keep the one we already know.
+        val next = message.playback.let {
+            if (it.source == null && previous?.content == it.content) it.copy(source = previous.source) else it
+        }
         targetJumped = targetJumped ||
             previous == null ||
             previous.content != next.content ||
@@ -497,6 +642,7 @@ class WatchPartyCoordinator(
             sawLoadingSinceCorrection = false
             acted = true
             seeked = true
+            pingFastFor(DRIFT_FAST_PING_MS)
         }
         targetJumped = false
         if (target.isPlaying && !local.isPlaying) {
@@ -519,6 +665,8 @@ class WatchPartyCoordinator(
             // In between: keep nudging until we're close, rather than stopping at the edge.
             else -> speedNudge
         }
+        // Drifting suggests the network delay changed; measure it more often for a while.
+        if (speedNudge != 0) pingFastFor(DRIFT_FAST_PING_MS)
         val speed = target.speed * (1f + speedNudge * NUDGE_FRACTION)
         if (speed == appliedSpeed) return
         appliedSpeed = speed
@@ -548,12 +696,28 @@ class WatchPartyCoordinator(
         // Three missed heartbeats.
         private const val CONTACT_TIMEOUT_MS = 15_000L
 
-        // Followers send a keep-alive every heartbeat; three missed means they left the player.
-        private const val FOLLOWER_ACTIVE_MS = 15_000L
+        // Followers ping at least every 30 seconds, so 45 seconds of silence means they dropped off.
+        // Closing the player normally sends Leaving, so this only matters when a phone loses its connection.
+        private const val FOLLOWER_ACTIVE_MS = 45_000L
         private const val STALL_GRACE_MS = 1_000L
         private const val ROOM_WAIT_ANNOUNCE_MS = 2_000L
 
         private const val ROUND_TRIP_SAMPLES = 5
+
+        // Followers ping every heartbeat while settling in or drifting, otherwise every 30 seconds.
+        private const val FAST_PING_INTERVAL_MS = 5_000L
+        private const val SLOW_PING_INTERVAL_MS = 30_000L
+        private const val PING_INTERVAL_SLACK_MS = 500L
+        private const val SETTLE_IN_FAST_PING_MS = 60_000L
+        private const val DRIFT_FAST_PING_MS = 30_000L
+
+        private const val STATE_REQUEST_DEDUPE_MS = 2_000L
+        private const val HOLD_REUSE_MS = 2_000L
+
+        // The source goes out with the next few updates after it changes, in case one is lost.
+        private const val SOURCE_REPEATS = 3
+
+        private const val PAUSE_REQUEST_INTERVAL_MS = 5_000L
         private const val MAX_ONE_WAY_LATENCY_MS = 1_000L
 
         // Start nudging past 150 ms apart, stop once within 40 ms; 5% faster or slower is barely noticeable.

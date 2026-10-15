@@ -1,6 +1,7 @@
 package com.nuvio.app.features.watchparty
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.profiles.ProfileRepository
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
@@ -12,6 +13,9 @@ import io.github.jan.supabase.realtime.track
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.watch_party_removed
+import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -58,6 +63,10 @@ data class WatchPartyStatus(
         get() = localMemberId != null && localMemberId == controllerId
 
     fun nameOf(memberId: String?): String? = members.firstOrNull { it.memberId == memberId }?.name
+
+    /** Members in the player right now; the rest are in the room but elsewhere in the app. */
+    val watchingCount: Int
+        get() = members.count { it.watching != false }
 }
 
 enum class WatchPartyJoinResult {
@@ -178,8 +187,25 @@ object WatchPartyRoomController {
         control?.takeBack()
     }
 
+    // Whether this device is in the player, shared with the room through presence.
+    private var localWatching = false
+    private var announcePresence: (() -> Unit)? = null
+
+    /** Call when the player opens (true) or closes (false). */
+    fun setWatching(watching: Boolean) {
+        if (localWatching == watching) return
+        localWatching = watching
+        announcePresence?.invoke()
+    }
+
+    /** Owner only. The member leaves, but can join again with the invite. */
+    fun removeMember(memberId: String) {
+        control?.removeMember(memberId)
+    }
+
     fun leave() {
         WatchPartySessionRepository.leave()
+        announcePresence = null
         roomJob?.cancel()
         roomJob = null
         transport?.close()
@@ -214,6 +240,16 @@ object WatchPartyRoomController {
 
         val roomChannel = clientFor(server).channel("watch-party-$code") {
             presence { key = localMemberId }
+        }
+
+        suspend fun trackLocalMember() {
+            try {
+                roomChannel.track(localMember.copy(watching = localWatching))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The member list misses us until the next reconnect; sync still works.
+            }
         }
         val connection = MutableStateFlow(WatchPartyConnection.Connecting)
         val job = SupervisorJob()
@@ -296,16 +332,19 @@ object WatchPartyRoomController {
                     )
                 }
                 // Presence is not restored after a reconnect, so announce ourselves on every join.
-                if (next == WatchPartyConnection.Connected) {
-                    try {
-                        roomChannel.track(localMember)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // The member list misses us until the next reconnect; sync still works.
-                    }
-                }
+                if (next == WatchPartyConnection.Connected) trackLocalMember()
             }
+        }
+        // Also announced again whenever we open or close the player.
+        announcePresence = {
+            if (connection.value == WatchPartyConnection.Connected) roomScope.launch { trackLocalMember() }
+        }
+        roomScope.launch {
+            roomControl.removed.first { it }
+            val notice = getString(Res.string.watch_party_removed)
+            NuvioToastController.show(notice, durationMillis = 5_000L)
+            // Ends this room, this task included.
+            leave()
         }
         roomScope.launch {
             delay(CONNECT_TIMEOUT_MS)

@@ -235,4 +235,34 @@ class PortableSubtitleAutoSyncTest {
 
         assertEquals(listOf("full-en", "full-fr"), ranked.map { it.key })
     }
+
+    @Test
+    fun tryingAnotherReferenceSkipsTheOneAlreadyUsed() = runTest {
+        // Two built-in English tracks; the second is timed 3 seconds later than the first.
+        val file = matroska(
+            tracks = listOf(subtitleTrack(3, "eng"), subtitleTrack(4, "eng")),
+            cues = mapOf(3L to dialogue, 4L to shifted(by = 3_000L)),
+        )
+        suspend fun sync(excluded: Set<String>) = PortableSubtitleAutoSync.run(
+            sourceUrl = "https://example.com/film.mkv",
+            sourceHeaders = emptyMap(),
+            selectedUrl = "selected.srt",
+            selectedLanguage = "en",
+            subtitleHeaders = { emptyMap() },
+            alternatives = { emptyList() },
+            toleranceMs = 0,
+            excludedReferenceKeys = excluded,
+            loadIndex = { MatroskaSubtitleIndex.load(sourceOf(file)) },
+            loadSubtitle = { _, _ -> srt(dialogue) },
+        )
+
+        val first = sync(emptySet())
+        assertIs<PortableAutoSyncResult.Fixed>(first)
+        assertTrue(first.moreReferences)
+        val second = sync(setOf(first.referenceKey))
+        assertIs<PortableAutoSyncResult.Fixed>(second)
+        assertTrue(second.referenceKey != first.referenceKey)
+        assertTrue(abs(second.fix.delayMs - first.fix.delayMs) >= 2_900, "${first.fix.delayMs} vs ${second.fix.delayMs}")
+        assertEquals(PortableAutoSyncResult.NoReference, sync(setOf(first.referenceKey, second.referenceKey)))
+    }
 }

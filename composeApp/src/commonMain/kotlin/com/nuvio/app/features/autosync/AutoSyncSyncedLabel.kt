@@ -27,7 +27,7 @@ import nuvio.composeapp.generated.resources.autosync_label_synced
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The add-on subtitle whose on-screen timing AutoSync corrected or confirmed.
+ * The add-on subtitle whose on-screen timing AutoSync (or the audio sync) corrected or confirmed.
  * Cleared whenever the sidecar starts or stops a subtitle, since that renders the original timing.
  */
 internal object AutoSyncSyncedSubtitle {

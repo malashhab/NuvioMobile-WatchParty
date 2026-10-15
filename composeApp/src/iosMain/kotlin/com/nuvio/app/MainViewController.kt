@@ -5,6 +5,7 @@ import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import com.nuvio.app.core.ui.NativeProfileSwitcherController
 import com.nuvio.app.features.autosync.AutoSyncPreferencesIos
+import com.nuvio.app.features.streams.NetworkPathObserver
 import com.nuvio.app.navigation.AppRoute
 import platform.UIKit.UIColor
 import platform.UIKit.UIViewController
@@ -99,10 +100,11 @@ fun AppGateViewController(
 
 private fun nuvioComposeViewController(
     content: @androidx.compose.runtime.Composable () -> Unit,
-): UIViewController = run {
+): UIViewController {
     // Before any screen reads the auto-sync settings.
     AutoSyncPreferencesIos.install()
-    ComposeUIViewController(
+    NetworkPathObserver.start()
+    return ComposeUIViewController(
         configure = { onFocusBehavior = OnFocusBehavior.DoNothing },
         content = content,
     ).apply {

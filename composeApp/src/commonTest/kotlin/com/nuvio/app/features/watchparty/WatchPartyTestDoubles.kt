@@ -57,12 +57,23 @@ internal class FakeWatchPartyPlayer(
 
     override fun currentPositionMs(): Long? = content?.let { positionMs }
 
-    override fun currentSource(): WatchPartySource? = null
+    var source: WatchPartySource? = null
+
+    /** The source passed with each [openContent]. */
+    val openedSources = mutableListOf<WatchPartySource?>()
+
+    override fun currentSource(): WatchPartySource? = source
 
     override fun currentPlayback(): WatchPartyPlayback? {
         val current = content ?: return null
         if (!isReady) return null
-        return WatchPartyPlayback(content = current, isPlaying = isPlaying, positionMs = positionMs, speed = playbackSpeed)
+        return WatchPartyPlayback(
+            content = current,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            source = source,
+            speed = playbackSpeed,
+        )
     }
 
     override fun setSpeed(speed: Float) {
@@ -88,6 +99,7 @@ internal class FakeWatchPartyPlayer(
 
     override fun openContent(content: WatchPartyContent, positionMs: Long, source: WatchPartySource?) {
         actions += "open:${content.videoId}@$positionMs"
+        openedSources += source
         if (!switchesContentOnOpen) return
         this.content = content
         this.positionMs = positionMs

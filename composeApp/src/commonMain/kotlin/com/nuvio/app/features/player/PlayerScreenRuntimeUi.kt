@@ -14,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import com.nuvio.app.features.autosync.bubble.AutoSyncBubbleToastHost
 import com.nuvio.app.features.p2p.P2pStreamingState
+import com.nuvio.app.features.reshaped.livetv.ReshapedLiveTvChannelsOverlay
 import com.nuvio.app.features.p2p.formatP2pMegabytes
 import com.nuvio.app.features.p2p.formatP2pSpeed
 import com.nuvio.app.features.player.skip.internalSkipAction
@@ -227,6 +229,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             )
         }
 
+        SubtitleSyncStatusPanel(horizontalSafePadding) // AutoSync hook: audio sync fallback status
+
         RenderPlayerControls(displayedPositionMs = displayedPositionMs, isEpisode = isEpisode)
         RenderPlaybackOverlays(
             runtime = runtime,
@@ -238,7 +242,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             p2pRebufferMessage = p2pRebufferMessage,
             p2pRebufferProgress = p2pRebufferProgress,
         )
+        if (!isInPip) AutoSyncBubbleToastHost(controlsVisible) // AutoSync hook: bubble toast
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
+        if (isReshapedLiveTv) ReshapedLiveTvChannelsOverlay() // Nuvio RS Live TV hook
     }
 }
 
@@ -269,7 +275,7 @@ private fun PlayerScreenRuntime.currentInitialPositionRequestKey(): String? {
 private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
     val isInPip = rememberIsInPictureInPicture()
     AnimatedVisibility(
-        visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
+        visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip && !seekPreview.showSyncPanel,
         enter = fadeIn(),
         exit = fadeOut(),
     ) {
@@ -329,7 +335,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             } else {
                 null
             },
-            onSourcesClick = if (activeVideoId != null) { { openSourcesPanel() } } else null,
+            onSourcesClick = if (!isReshapedLiveTv && activeVideoId != null) { { openSourcesPanel() } } else null,
+            onChannelsClick = if (isReshapedLiveTv) { { showReshapedLiveTvChannelsPanel = true } } else null,
             onEpisodesClick = if (isSeries) { { openEpisodesPanel() } } else null,
             onOpenInExternalPlayer = args.onOpenInExternalPlayer
                 ?.takeUnless { ServerStreams.isServerSourceId(activeProviderAddonId) }
@@ -387,7 +394,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 isScrubbingTimeline = true
                 scrubbingPositionMs = positionMs
             },
-            onScrubFinished = { positionMs ->
+            onScrubFinished = { rawPositionMs ->
+                val positionMs = seekPreviewAligned(rawPositionMs)
                 finishTimelineScrub(positionMs)
                 playerController?.seekTo(positionMs)
                 scheduleProgressSyncAfterSeek()
