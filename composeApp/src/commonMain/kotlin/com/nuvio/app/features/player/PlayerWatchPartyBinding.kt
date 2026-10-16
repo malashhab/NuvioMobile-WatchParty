@@ -54,6 +54,9 @@ private const val WATCH_PARTY_TICK_MS = 1_000L
 // Players report the new position shortly after a seek, not at the moment it is requested.
 private const val WATCH_PARTY_SEEK_REPORT_DELAY_MS = 700L
 
+// Buffered ahead before a phone counts as ready to start with the room (Android's own start threshold is 2.5 s).
+private const val WATCH_PARTY_READY_BUFFER_MS = 3_000L
+
 private const val WATCH_PARTY_SOURCE_SEARCH_TIMEOUT_MS = 30_000L
 
 // A report this old means the player is stalled, not playing on; don't extrapolate past it.
@@ -283,6 +286,15 @@ internal class PlayerWatchPartyPort(
             seasonNumber = runtime.activeSeasonNumber,
             episodeNumber = runtime.activeEpisodeNumber,
         )
+
+    override fun isReadyToStart(): Boolean {
+        if (currentPlayback() == null) return false
+        val snapshot = runtime.playbackSnapshot
+        // Unknown buffer (0) or the last few seconds of the video: nothing more is coming, so go.
+        if (snapshot.bufferedPositionMs <= 0L) return true
+        if (snapshot.durationMs > 0L && snapshot.durationMs - snapshot.positionMs < WATCH_PARTY_READY_BUFFER_MS * 2) return true
+        return snapshot.bufferedPositionMs - snapshot.positionMs >= WATCH_PARTY_READY_BUFFER_MS
+    }
 
     override fun currentPlayback(): WatchPartyPlayback? {
         val snapshot = runtime.playbackSnapshot
