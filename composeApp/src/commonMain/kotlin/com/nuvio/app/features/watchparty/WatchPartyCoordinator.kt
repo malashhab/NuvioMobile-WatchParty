@@ -372,7 +372,7 @@ class WatchPartyCoordinator(
     private fun evaluateHold() {
         val decision = readyCheck.evaluate(
             nowMs = nowMs(),
-            controllerReady = player.currentPlayback() != null,
+            controllerReady = player.isReadyToStart(),
             activeMembers = activeFollowers(),
         )
         when (decision) {
@@ -543,6 +543,8 @@ class WatchPartyCoordinator(
         if (player.currentContent() != target.content) return
         val local = player.currentPlayback() ?: return
         if (abs(local.positionMs - target.positionMs) > driftToleranceMs) return
+        // Checked again every tick, so this answers as soon as enough is buffered.
+        if (!player.isReadyToStart()) return
         acknowledgedHoldId = holdId
         transport.send(WatchPartyMessage.Ready(senderId = localMemberId, holdId = holdId))
     }

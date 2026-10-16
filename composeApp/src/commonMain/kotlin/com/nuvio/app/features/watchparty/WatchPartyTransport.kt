@@ -17,6 +17,12 @@ interface WatchPartyPlayerPort {
     /** Live playback state, or null while the content is still loading. */
     fun currentPlayback(): WatchPartyPlayback?
 
+    /**
+     * Loaded with enough buffered ahead to keep playing once the room starts. Some players report a
+     * picture before they can sustain playback; starting then just stalls a moment later.
+     */
+    fun isReadyToStart(): Boolean = currentPlayback() != null
+
     /** Position even while loading, e.g. the target of a seek in progress; null when unknown. */
     fun currentPositionMs(): Long?
 

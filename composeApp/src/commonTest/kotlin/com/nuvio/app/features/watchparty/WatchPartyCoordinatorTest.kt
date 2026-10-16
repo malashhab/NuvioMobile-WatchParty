@@ -691,6 +691,50 @@ class WatchPartyCoordinatorTest {
     }
 
     @Test
+    fun aFollowerWithoutEnoughBufferedIsNotReadyYet() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+        guestPlayer.loadsAfterSeek = true
+
+        now = 2_000L
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+
+        // A picture at the new spot, but only a moment of video behind it: the room keeps waiting.
+        now = 3_000L
+        guestPlayer.isReady = true
+        guestPlayer.bufferedEnough = false
+        guest.onLocalPlaybackChanged()
+        assertEquals(listOf("pause"), hostPlayer.actions)
+
+        now = 4_000L
+        guestPlayer.bufferedEnough = true
+        guest.onTick()
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
+    fun theControllerWaitsForItsOwnBufferToo() {
+        host.start()
+        guest.start()
+        hostPlayer.actions.clear()
+
+        now = 2_000L
+        hostPlayer.bufferedEnough = false
+        hostPlayer.positionMs = 300_000L
+        host.onLocalSeek()
+        now = 3_000L
+        host.onTick()
+        assertEquals(listOf("pause"), hostPlayer.actions)
+
+        hostPlayer.bufferedEnough = true
+        now = 4_000L
+        host.onTick()
+        assertEquals(listOf("pause", "play"), hostPlayer.actions)
+    }
+
+    @Test
     fun aGuestClosingTheVideoPausesItForEveryone() {
         host.start()
         guest.start()

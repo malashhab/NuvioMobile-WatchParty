@@ -50,6 +50,11 @@ internal class FakeWatchPartyPlayer(
 
     var playbackSpeed = 1f
 
+    /** False mimics a player that shows a picture before it has buffered enough to keep playing. */
+    var bufferedEnough = true
+
+    override fun isReadyToStart(): Boolean = currentPlayback() != null && bufferedEnough
+
     /** Kept apart from [actions], so tests about play, pause and seek aren't affected by speed nudges. */
     val speedChanges = mutableListOf<Float>()
 

@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -20,15 +21,24 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.autoreleasepool
 import kotlinx.cinterop.reinterpret
+import platform.CoreGraphics.CGImageGetHeight
+import platform.CoreGraphics.CGImageGetWidth
 import platform.CoreGraphics.CGImageRef
+import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.CGSizeMake
 import platform.CoreFoundation.CFDataCreate
 import platform.CoreFoundation.CFRelease
 import platform.ImageIO.CGImageSourceCreateImageAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
 import platform.ImageIO.CGImageSourceGetCount
+import platform.UIKit.UIGraphicsImageRenderer
+import platform.UIKit.UIGraphicsImageRendererFormat
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageView
 import platform.UIKit.UIViewContentMode
@@ -37,11 +47,26 @@ import kotlinx.cinterop.usePinned
 
 private val gifHttpClient = HttpClient(Darwin)
 private val gifDecodeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-private const val MaxCachedGifImages = 12
 private const val DefaultGifFrameDelayCentiseconds = 10
-private val gifImageCache = mutableMapOf<String, UIImage>()
-private val gifImageCacheOrder = mutableListOf<String>()
-private val gifImageInFlight = mutableMapOf<String, Deferred<UIImage?>>()
+
+// Cards are at most a few hundred points wide, so frames are kept at card size instead of the GIF's
+// own (often much larger) size. Long animations keep an evenly spread subset of their frames.
+private const val MaxGifFramePixels = 420
+private const val MaxGifFrames = 48
+
+// Decoded animations are kept within a memory budget; the downloaded files, which are much smaller,
+// are kept longer so scrolling back only needs a quick re-decode, not a new download.
+private const val MaxDecodedGifBytes = 80L * 1024 * 1024
+private const val MaxCachedGifFiles = 32
+
+// A few at a time, so a row full of animated cards doesn't flood the processor.
+private val gifDecodePermits = Semaphore(2)
+
+private class DecodedGif(val image: UIImage, val bytes: Long)
+
+private val gifImageCache = LinkedHashMap<String, DecodedGif>()
+private val gifFileCache = LinkedHashMap<String, ByteArray>()
+private val gifImageInFlight = mutableMapOf<String, Deferred<Pair<ByteArray, DecodedGif>?>>()
 
 private data class GifFrame(
     val image: UIImage,
@@ -95,26 +120,36 @@ internal actual fun CollectionCardRemoteImage(
         }
     }
 
-    UIKitView(
-        modifier = modifier,
-        factory = {
-            UIImageView().apply {
-                contentMode = UIViewContentMode.UIViewContentModeScaleAspectFill
-                clipsToBounds = true
-                userInteractionEnabled = false
-                tag = imageUrl.hashCode().toLong()
-                imageViewHolder.imageView = this
-                updateGifImage(gifImage)
-            }
-        },
-        update = { imageView ->
-            imageViewHolder.imageView = imageView
-            if (imageView.tag != imageUrl.hashCode().toLong()) {
-                imageView.tag = imageUrl.hashCode().toLong()
-            }
-            imageView.updateGifImage(gifImage)
-        },
-    )
+    Box(modifier = modifier) {
+        // The still picture shows right away (and stays if the animation can't be read).
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = contentDescription,
+            modifier = Modifier.matchParentSize(),
+            contentScale = contentScale,
+        )
+        val animated = gifImage ?: return@Box
+        UIKitView(
+            modifier = Modifier.matchParentSize(),
+            factory = {
+                UIImageView().apply {
+                    contentMode = UIViewContentMode.UIViewContentModeScaleAspectFill
+                    clipsToBounds = true
+                    userInteractionEnabled = false
+                    tag = imageUrl.hashCode().toLong()
+                    imageViewHolder.imageView = this
+                    updateGifImage(animated)
+                }
+            },
+            update = { imageView ->
+                imageViewHolder.imageView = imageView
+                if (imageView.tag != imageUrl.hashCode().toLong()) {
+                    imageView.tag = imageUrl.hashCode().toLong()
+                }
+                imageView.updateGifImage(animated)
+            },
+        )
+    }
 }
 
 private fun UIImageView.updateGifImage(image: UIImage?) {
@@ -128,42 +163,53 @@ private fun UIImageView.updateGifImage(image: UIImage?) {
 }
 
 private fun cachedGifImage(imageUrl: String): UIImage? {
-    val image = gifImageCache[imageUrl] ?: return null
-    gifImageCacheOrder.remove(imageUrl)
-    gifImageCacheOrder.add(imageUrl)
-    return image
+    val entry = gifImageCache.remove(imageUrl) ?: return null
+    gifImageCache[imageUrl] = entry
+    return entry.image
 }
 
-private fun storeGifImage(imageUrl: String, image: UIImage) {
-    gifImageCache[imageUrl] = image
-    gifImageCacheOrder.remove(imageUrl)
-    gifImageCacheOrder.add(imageUrl)
-
-    while (gifImageCacheOrder.size > MaxCachedGifImages) {
-        val eldestKey = gifImageCacheOrder.removeFirstOrNull() ?: break
-        gifImageCache.remove(eldestKey)
+private fun storeGifImage(imageUrl: String, entry: DecodedGif) {
+    gifImageCache.remove(imageUrl)
+    gifImageCache[imageUrl] = entry
+    var total = gifImageCache.values.sumOf { it.bytes }
+    while (total > MaxDecodedGifBytes && gifImageCache.size > 1) {
+        val eldestKey = gifImageCache.keys.first()
+        total -= gifImageCache.remove(eldestKey)?.bytes ?: 0L
     }
 }
 
+private fun cachedGifFile(imageUrl: String): ByteArray? {
+    val bytes = gifFileCache.remove(imageUrl) ?: return null
+    gifFileCache[imageUrl] = bytes
+    return bytes
+}
+
+private fun storeGifFile(imageUrl: String, bytes: ByteArray) {
+    gifFileCache.remove(imageUrl)
+    gifFileCache[imageUrl] = bytes
+    while (gifFileCache.size > MaxCachedGifFiles) {
+        gifFileCache.remove(gifFileCache.keys.first())
+    }
+}
+
+// Runs on the main thread (from the card), so the caches are only ever touched there.
 @OptIn(ExperimentalForeignApi::class)
 private suspend fun loadGifImage(imageUrl: String): UIImage? {
     cachedGifImage(imageUrl)?.let { return it }
 
+    val known = cachedGifFile(imageUrl)
     val request = gifImageInFlight[imageUrl] ?: gifDecodeScope.async {
         runCatching {
-            val bytes = gifHttpClient.get(imageUrl).body<ByteArray>()
-            bytes
-                .takeIf { it.isNotEmpty() }
-                ?.let { gifBytes ->
-                    UIImage.gifImageWithBytes(
-                        bytes = gifBytes,
-                        frameDurations = parseGifFrameDurations(gifBytes),
-                    )
-                }
+            val bytes = known ?: gifHttpClient.get(imageUrl).body<ByteArray>()
+            if (bytes.isEmpty()) return@runCatching null
+            val decoded = gifDecodePermits.withPermit {
+                UIImage.gifImageWithBytes(bytes = bytes, frameDurations = parseGifFrameDurations(bytes))
+            } ?: return@runCatching null
+            bytes to decoded
         }.getOrNull()
     }.also { gifImageInFlight[imageUrl] = it }
 
-    val image = try {
+    val result = try {
         request.await()
     } finally {
         if (gifImageInFlight[imageUrl] === request) {
@@ -171,11 +217,10 @@ private suspend fun loadGifImage(imageUrl: String): UIImage? {
         }
     }
 
-    if (image != null) {
-        storeGifImage(imageUrl, image)
-    }
-
-    return image
+    val (bytes, entry) = result ?: return null
+    storeGifFile(imageUrl, bytes)
+    storeGifImage(imageUrl, entry)
+    return entry.image
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -188,32 +233,61 @@ private fun ByteArray.toCFData() =
         )
     }
 
+/** Draws [image] no bigger than [MaxGifFramePixels] on its long side; small frames stay as they are. */
+@OptIn(ExperimentalForeignApi::class)
+private fun shrinkFrame(imageRef: CGImageRef): Pair<UIImage, Long> {
+    val width = CGImageGetWidth(imageRef).toDouble()
+    val height = CGImageGetHeight(imageRef).toDouble()
+    val longSide = maxOf(width, height)
+    val original = UIImage.imageWithCGImage(imageRef)
+    if (longSide <= MaxGifFramePixels || longSide <= 0.0) {
+        return original to (width * height * 4).toLong()
+    }
+    val scale = MaxGifFramePixels / longSide
+    val targetWidth = (width * scale).coerceAtLeast(1.0)
+    val targetHeight = (height * scale).coerceAtLeast(1.0)
+    val format = UIGraphicsImageRendererFormat().apply { this.scale = 1.0 }
+    val renderer = UIGraphicsImageRenderer(size = CGSizeMake(targetWidth, targetHeight), format = format)
+    val shrunk = renderer.imageWithActions { _ ->
+        original.drawInRect(CGRectMake(0.0, 0.0, targetWidth, targetHeight))
+    }
+    return shrunk to (targetWidth * targetHeight * 4).toLong()
+}
+
 @OptIn(ExperimentalForeignApi::class)
 private fun UIImage.Companion.gifImageWithBytes(
     bytes: ByteArray,
     frameDurations: List<Int>,
-): UIImage? {
+): DecodedGif? {
     return runCatching {
         val data = bytes.toCFData() ?: return null
         try {
             val source = CGImageSourceCreateWithData(data, null) ?: return null
             try {
                 val count = CGImageSourceGetCount(source).toInt()
+                if (count <= 0) return null
+                // An evenly spread subset of frames for long animations; each kept frame lasts as
+                // long as the frames it stands in for, so the animation keeps its speed.
+                val keep = if (count <= MaxGifFrames) (0 until count).toList() else
+                    (0 until MaxGifFrames).map { (it.toLong() * count / MaxGifFrames).toInt() }.distinct()
                 val frames = mutableListOf<GifFrame>()
+                var frameBytes = 0L
 
-                for (index in 0 until count) {
-                    val imageRef: CGImageRef = CGImageSourceCreateImageAtIndex(source, index.toULong(), null) ?: continue
-                    try {
-                        frames.add(
-                            GifFrame(
-                                image = UIImage.imageWithCGImage(imageRef),
-                                delayCentiseconds = frameDurations.getOrNull(index)
-                                    ?.coerceAtLeast(1)
-                                    ?: DefaultGifFrameDelayCentiseconds,
-                            )
-                        )
-                    } finally {
-                        CGImageRelease(imageRef)
+                keep.forEachIndexed { position, index ->
+                    val nextIndex = keep.getOrNull(position + 1) ?: count
+                    val delay = (index until nextIndex).sumOf { frame ->
+                        frameDurations.getOrNull(frame)?.coerceAtLeast(1) ?: DefaultGifFrameDelayCentiseconds
+                    }
+                    autoreleasepool {
+                        val imageRef: CGImageRef = CGImageSourceCreateImageAtIndex(source, index.toULong(), null)
+                            ?: return@autoreleasepool
+                        try {
+                            val (image, cost) = shrinkFrame(imageRef)
+                            frames.add(GifFrame(image = image, delayCentiseconds = delay))
+                            frameBytes += cost
+                        } finally {
+                            CGImageRelease(imageRef)
+                        }
                     }
                 }
 
@@ -222,6 +296,7 @@ private fun UIImage.Companion.gifImageWithBytes(
                 val expanded = expandedGifFrames(frames)
                 val durationSeconds = (expanded.images.size * expanded.tickCentiseconds) / 100.0
                 UIImage.animatedImageWithImages(expanded.images, durationSeconds)
+                    ?.let { DecodedGif(image = it, bytes = frameBytes) }
             } finally {
                 CFRelease(source)
             }
