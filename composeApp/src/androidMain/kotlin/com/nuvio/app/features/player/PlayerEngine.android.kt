@@ -50,6 +50,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ForwardingRenderer
 import androidx.media3.exoplayer.Renderer
@@ -65,7 +66,7 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.CaptionStyleCompat
 import com.nuvio.app.features.autosync.AutoSyncExtractorsFactory
-import com.nuvio.app.features.autosync.AutoSyncPreferencesRepository
+import com.nuvio.app.features.player.audiosync.AudioSyncTaps
 import com.nuvio.app.features.autosync.rememberAutoSyncCoordinator
 import com.nuvio.app.R
 import com.nuvio.app.features.streams.normalizeStreamType
@@ -293,16 +294,31 @@ private fun ExoPlayerSurface(
     }
     var probeAttempted by remember(playerSourceKey) { mutableStateOf(false) }
 
-    val extractorsFactory = remember(sourceUrl) {
-        DefaultExtractorsFactory()
-            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
-            .setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE)
-            .let { factory -> // AutoSync hook: no observation while disabled.
-                AutoSyncPreferencesRepository.ensureLoaded()
-                if (AutoSyncPreferencesRepository.preferredSubtitleAutoSyncOnStart.value) {
-                    AutoSyncExtractorsFactory(factory, sourceUrl)
-                } else factory
-            }
+    val extractorsFactory = remember(sourceUrl, sourceAudioUrl) {
+        AutoSyncExtractorsFactory( // AutoSync hook: also lets the audio sync fallback hear the stream
+            delegate = DefaultExtractorsFactory()
+                .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
+                .setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE),
+            sourceKey = sourceUrl,
+        )
+    }
+    // AutoSync hook: the network side on its own, so audio sync reads ahead without the VOD cache.
+    val autoSyncDataSourceFactory = remember(
+        context,
+        sourceUrl,
+        sanitizedSourceHeaders,
+        sanitizedSourceResponseHeaders,
+        useYoutubeChunkedPlayback,
+        externalSubtitles,
+    ) {
+        PlatformPlaybackDataSourceFactory.create(
+            context = context,
+            defaultRequestHeaders = sanitizedSourceHeaders,
+            defaultResponseHeaders = sanitizedSourceResponseHeaders,
+            useYoutubeChunkedPlayback = useYoutubeChunkedPlayback,
+            useLongReadTimeout = isLoopbackPlaybackSource(sourceUrl),
+            externalSubtitles = externalSubtitles,
+        )
     }
     val dataSourceFactory = remember(
         context,
@@ -550,8 +566,11 @@ private fun ExoPlayerSurface(
         externalSubtitles = externalSubtitles,
         useLibass = useLibass,
         preferredSubtitleLanguage = playerSettings.preferredSubtitleLanguage,
+        secondaryPreferredSubtitleLanguage = playerSettings.secondaryPreferredSubtitleLanguage,
         onMimeTypeSelected = { selectedExternalSubtitleMimeType = it },
         onSubtitleDelayChanged = { subtitleDelayMs = it },
+        sourceAudioUrl = sourceAudioUrl,
+        dataSourceFactory = autoSyncDataSourceFactory,
     )
 
     fun syncPlayerViewKeepScreenOn() {
@@ -934,10 +953,15 @@ private fun ExoPlayerSurface(
                             .setSubtitleConfigurations(listOf(subtitleConfig))
                             .build()
                         Log.d(TAG, "setSubtitleUri: newMediaItem subtitleConfigs count=${newMediaItem.localConfiguration?.subtitleConfigurations?.size}")
+                        val currentTextFlags =
+                            exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags
                         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                             .buildUpon()
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .setIgnoredTextSelectionFlags(
+                                currentTextFlags and C.SELECTION_FLAG_DEFAULT.inv()
+                            )
                             .setPreferredTextRoleFlags(C.ROLE_FLAG_SUBTITLE)
                             .build()
                         Log.d(TAG, "setSubtitleUri: track params set before prepare, textDisabled=${exoPlayer.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)}")
@@ -2287,6 +2311,13 @@ private class SubtitleOffsetRenderersFactory(
     private val shouldStripSdhProvider: () -> Boolean,
     private val videoBoundsFractionProvider: () -> RectF?,
 ) : DefaultRenderersFactory(context) {
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean,
+    ): AudioSink? = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+        ?.let(AudioSyncTaps::wrapAudioSink) // AutoSync hook: audio sync fallback hears the playing audio
+
     override fun buildTextRenderers(
         context: Context,
         output: TextOutput,

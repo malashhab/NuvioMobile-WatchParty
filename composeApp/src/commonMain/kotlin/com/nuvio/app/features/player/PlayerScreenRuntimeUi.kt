@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.autosync.bubble.AutoSyncBubbleToastHost
 import com.nuvio.app.features.p2p.P2pStreamingState
 import com.nuvio.app.features.party.PartyRepository
 import com.nuvio.app.features.p2p.formatP2pMegabytes
@@ -230,6 +231,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             )
         }
 
+        SubtitleSyncStatusPanel(horizontalSafePadding) // AutoSync hook: audio sync fallback status
+
         RenderPlayerControls(displayedPositionMs = displayedPositionMs, isEpisode = isEpisode)
         RenderPlaybackOverlays(
             runtime = runtime,
@@ -241,6 +244,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             p2pRebufferMessage = p2pRebufferMessage,
             p2pRebufferProgress = p2pRebufferProgress,
         )
+        if (!isInPip) AutoSyncBubbleToastHost(controlsVisible) // AutoSync hook: bubble toast
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
         RenderParty(runtime = runtime)
         RenderPartyChat(runtime = runtime)

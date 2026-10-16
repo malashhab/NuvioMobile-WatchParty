@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analizando…</string>
+    <string name="autosync_toast_synced">Auto Sync • Subtítulos sincronizados</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Se ha cambiado a un subtítulo que coincide mejor</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Los subtítulos ya estaban sincronizados</string>
+    <string name="autosync_toast_failed">Auto Sync • Error de sincronización • no se han cambiado los tiempos del subtítulo</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • No hay subtítulos incrustados para comparar • no se han cambiado los tiempos del subtítulo</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Formato de subtítulo no compatible • no se han cambiado los tiempos del subtítulo</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • No se ha encontrado coincidencia • sincronizando con el audio…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Sincronizado con otra referencia</string>
+    <string name="autosync_toast_retry_none">Auto Sync • No se encontró una referencia mejor</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Falló el reintento con otra referencia • se mantuvo la sincronización actual</string>
+    <string name="autosync_label_synced">Sincronizado automáticamente</string>
+</resources>

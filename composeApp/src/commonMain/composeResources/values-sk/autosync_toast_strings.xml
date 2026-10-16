@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analýza…</string>
+    <string name="autosync_toast_synced">Auto Sync • Titulky synchronizované</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Prepnuté na lepšie zodpovedajúce titulky</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Titulky už sú synchronizované</string>
+    <string name="autosync_toast_failed">Auto Sync • Synchronizácia zlyhala • časovanie titulkov nezmenené</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Žiadne vložené titulky na porovnanie • časovanie titulkov nezmenené</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Formát titulkov nie je podporovaný • časovanie titulkov nezmenené</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Zhoda sa nenašla • synchronizácia podľa zvuku…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Synchronizované podľa inej referencie</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Lepšia referencia sa nenašla</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Opakovanie s inou referenciou zlyhalo • aktuálna synchronizácia zachovaná</string>
+    <string name="autosync_label_synced">Automaticky synchronizované</string>
+</resources>

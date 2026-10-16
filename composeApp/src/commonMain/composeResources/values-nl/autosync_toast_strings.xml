@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analyseren…</string>
+    <string name="autosync_toast_synced">Auto Sync • Ondertitels gesynchroniseerd</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Overgeschakeld naar een beter passende ondertitel</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Ondertitels zijn al synchroon</string>
+    <string name="autosync_toast_failed">Auto Sync • Synchronisatie mislukt • timing van de ondertitel ongewijzigd</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Geen ingesloten ondertitels om mee te vergelijken • timing van de ondertitel ongewijzigd</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Ondertitelformaat niet ondersteund • timing van de ondertitel ongewijzigd</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Geen match gevonden • synchroniseren op de audio…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Gesynchroniseerd met een andere referentie</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Geen betere referentie gevonden</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Opnieuw proberen met andere referentie mislukt • huidige synchronisatie behouden</string>
+    <string name="autosync_label_synced">Automatisch gesynchroniseerd</string>
+</resources>

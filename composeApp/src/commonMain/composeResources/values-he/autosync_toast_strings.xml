@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • מנתח…</string>
+    <string name="autosync_toast_synced">Auto Sync • הכתוביות סונכרנו</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • עבר לכתובית שמתאימה יותר</string>
+    <string name="autosync_toast_in_sync">Auto Sync • הכתוביות כבר מסונכרנות</string>
+    <string name="autosync_toast_failed">Auto Sync • הסנכרון נכשל • תזמון הכתוביות לא השתנה</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • אין כתוביות מוטמעות להשוואה • תזמון הכתוביות לא השתנה</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • פורמט הכתוביות אינו נתמך • תזמון הכתוביות לא השתנה</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • לא נמצאה התאמה • מסנכרן לפי השמע…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • סונכרן לפי ייחוס אחר</string>
+    <string name="autosync_toast_retry_none">Auto Sync • לא נמצא ייחוס טוב יותר</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • ניסיון חוזר עם ייחוס אחר נכשל • הסנכרון הנוכחי נשמר</string>
+    <string name="autosync_label_synced">סונכרן אוטומטית</string>
+</resources>

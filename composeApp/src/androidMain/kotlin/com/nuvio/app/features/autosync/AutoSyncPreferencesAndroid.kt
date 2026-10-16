@@ -2,15 +2,20 @@ package com.nuvio.app.features.autosync
 
 import android.content.Context
 import com.nuvio.app.core.storage.ProfileScopedKey
+import com.nuvio.app.features.autosync.bubble.AutoSyncBubbleToastsAndroid
+import com.nuvio.app.features.player.audiosync.AudioSyncFallback
 
 internal object AutoSyncPreferencesAndroid {
     private const val preferencesName = "nuvio_autosync_settings"
     private const val preferredSubtitleAutoSyncOnStartKey =
         "preferred_subtitle_auto_sync_on_start"
     private const val aggressiveModeKey = "auto_sync_aggressive_mode"
+    private const val debugLogsEnabledKey = "auto_sync_debug_logs_enabled"
     private const val syncToleranceMsKey = "auto_sync_tolerance_ms"
 
     fun initialize(context: Context) {
+        AudioSyncFallback.initialize(context)
+        AutoSyncBubbleToastsAndroid.initialize(context)
         val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
         AutoSyncPreferencesRepository.installPersistence(
             load = {
@@ -39,6 +44,20 @@ internal object AutoSyncPreferencesAndroid {
                 preferences
                     .edit()
                     .putBoolean(ProfileScopedKey.of(aggressiveModeKey), enabled)
+                    .apply()
+            },
+            loadDebugLogs = {
+                val key = ProfileScopedKey.of(debugLogsEnabledKey)
+                if (preferences.contains(key)) {
+                    preferences.getBoolean(key, false)
+                } else {
+                    null
+                }
+            },
+            saveDebugLogs = { enabled ->
+                preferences
+                    .edit()
+                    .putBoolean(ProfileScopedKey.of(debugLogsEnabledKey), enabled)
                     .apply()
             },
             loadSyncToleranceMs = {

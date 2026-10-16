@@ -567,6 +567,10 @@ private fun PlaybackSettingsSection(
                         enabled = otherSubtitleOptionsEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv,
                         preferredSubtitleLanguage = preferredSubtitleLanguage,
                     )
+                    AutoSyncBubbleToastSettingsRow(
+                        isTablet = isTablet,
+                        enabled = otherSubtitleOptionsEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv,
+                    )
                 }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(

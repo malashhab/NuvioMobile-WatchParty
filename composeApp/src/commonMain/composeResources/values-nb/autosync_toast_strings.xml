@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Analyserer…</string>
+    <string name="autosync_toast_synced">Auto Sync • Undertekster synkronisert</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Byttet til en undertekst som passer bedre</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Undertekstene er allerede synkronisert</string>
+    <string name="autosync_toast_failed">Auto Sync • Synkronisering mislyktes • timingen til underteksten er uendret</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Ingen innebygde undertekster å sammenligne med • timingen til underteksten er uendret</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Undertekstformatet støttes ikke • timingen til underteksten er uendret</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Fant ikke treff • synkroniserer med lyden i stedet…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Synkronisert mot en annen referanse</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Fant ingen bedre referanse</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Nytt forsøk med annen referanse mislyktes • nåværende synkronisering beholdt</string>
+    <string name="autosync_label_synced">Automatisk synkronisert</string>
+</resources>

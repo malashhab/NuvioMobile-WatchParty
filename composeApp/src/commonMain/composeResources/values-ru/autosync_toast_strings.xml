@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • Анализ…</string>
+    <string name="autosync_toast_synced">Auto Sync • Субтитры синхронизированы</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Выбраны субтитры, которые подходят лучше</string>
+    <string name="autosync_toast_in_sync">Auto Sync • Субтитры уже синхронизированы</string>
+    <string name="autosync_toast_failed">Auto Sync • Не удалось синхронизировать • тайминг субтитров не изменён</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Нет встроенных субтитров для сравнения • тайминг субтитров не изменён</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Формат субтитров не поддерживается • тайминг субтитров не изменён</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Совпадение не найдено • синхронизация по звуку…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Синхронизировано по другому эталону</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Лучший эталон не найден</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Не удалось повторить с другим эталоном • текущая синхронизация сохранена</string>
+    <string name="autosync_label_synced">Синхронизировано автоматически</string>
+</resources>

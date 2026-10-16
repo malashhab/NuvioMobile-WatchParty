@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AutoSync toasts and the "Auto synced" label. Keep keys in sync across locales. -->
+<resources>
+    <string name="autosync_toast_analyzing">Auto Sync • A analisar…</string>
+    <string name="autosync_toast_synced">Auto Sync • Legendas sincronizadas</string>
+    <string name="autosync_toast_synced_replaced">Auto Sync • Mudou para uma legenda com melhor correspondência</string>
+    <string name="autosync_toast_in_sync">Auto Sync • As legendas já estão sincronizadas</string>
+    <string name="autosync_toast_failed">Auto Sync • A sincronização falhou • tempo da legenda não alterado</string>
+    <string name="autosync_toast_failed_no_reference">Auto Sync • Não há legendas incorporadas para comparar • tempo da legenda não alterado</string>
+    <string name="autosync_toast_failed_unsupported">Auto Sync • Formato de legenda não suportado • tempo da legenda não alterado</string>
+    <string name="autosync_toast_failed_audio_fallback">Auto Sync • Nenhuma correspondência • a sincronizar com o áudio…</string>
+    <string name="autosync_toast_retry_synced">Auto Sync • Sincronizada com outra referência</string>
+    <string name="autosync_toast_retry_none">Auto Sync • Nenhuma referência melhor encontrada</string>
+    <string name="autosync_toast_retry_failed">Auto Sync • Falha ao tentar outra referência • sincronização atual mantida</string>
+    <string name="autosync_label_synced">Sincronizada automaticamente</string>
+</resources>

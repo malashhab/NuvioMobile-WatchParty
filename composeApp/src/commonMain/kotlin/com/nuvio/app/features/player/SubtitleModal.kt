@@ -33,7 +33,6 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import com.nuvio.app.features.autosync.AutoSyncedChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +48,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.core.ui.withDuplicateSafeLazyKeys
+import com.nuvio.app.features.autosync.AutoSyncSubtitleModalSlot
+import com.nuvio.app.features.autosync.AutoSyncedChip
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.addon_title
 import nuvio.composeapp.generated.resources.compose_player_built_in
@@ -317,6 +318,8 @@ fun SubtitleModal(
                         }
                     }
                 }
+
+                AutoSyncSubtitleModalSlot() // AutoSync hook
             }
         }
     }
@@ -441,14 +444,12 @@ private fun SubtitleOptionRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(
+            Row( // AutoSync hook: room for the "Auto synced" chip beside the source
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SubtitleSourceChip(label = sourceLabel, selected = selected)
-                (option as? SubtitleSelectionOption.Addon)?.let {
-                    AutoSyncedChip(it.subtitle.url, selected) // AutoSync hook
-                }
+                (option as? SubtitleSelectionOption.Addon)?.let { AutoSyncedChip(it.subtitle.url, selected) } // AutoSync hook
             }
             Text(
                 text = title,
