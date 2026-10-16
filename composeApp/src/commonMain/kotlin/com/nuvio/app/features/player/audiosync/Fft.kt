@@ -1,5 +1,6 @@
 package com.nuvio.app.features.player.audiosync
 
+import kotlin.concurrent.Volatile
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -14,8 +15,8 @@ internal class Fft(val size: Int) {
         require(size >= 2 && size and (size - 1) == 0) { "FFT size must be a power of two: $size" }
         cosTable = DoubleArray(size / 2) { cos(2.0 * PI * it / size) }
         sinTable = DoubleArray(size / 2) { sin(2.0 * PI * it / size) }
-        val bits = Integer.numberOfTrailingZeros(size)
-        bitReversed = IntArray(size) { Integer.reverse(it) ushr (32 - bits) }
+        val bits = size.countTrailingZeroBits()
+        bitReversed = IntArray(size) { reverseBits(it) ushr (32 - bits) }
     }
 
     /** Forward transform (e^{-i...}) when [inverse] is false. The inverse is unnormalized. */
@@ -56,13 +57,30 @@ internal class Fft(val size: Int) {
         private const val CACHED_SIZES = 4
 
         // The tables never change, so transforms of one size share them instead of rebuilding
-        // 1.5 MB of them on every alignment pass (every few seconds while searching).
-        private val cache = object : LinkedHashMap<Int, Fft>(8, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Fft>?) = size > CACHED_SIZES
-        }
+        // 1.5 MB of them on every alignment pass (every few seconds while searching). The map is
+        // replaced, never changed, so threads can read it freely; two threads racing to add the
+        // same size just build it twice.
+        @Volatile
+        private var cache: Map<Int, Fft> = emptyMap()
 
         /** A shared instance for [size]; [transform] only reads the tables, so it is thread-safe. */
-        fun of(size: Int): Fft = synchronized(cache) { cache.getOrPut(size) { Fft(size) } }
+        fun of(size: Int): Fft {
+            cache[size]?.let { return it }
+            val fft = Fft(size)
+            // Newest last; keep the most recent few sizes.
+            cache = (cache - size + (size to fft)).entries.toList().takeLast(CACHED_SIZES).associate { it.key to it.value }
+            return fft
+        }
+
+        private fun reverseBits(value: Int): Int {
+            var v = value
+            var result = 0
+            repeat(32) {
+                result = (result shl 1) or (v and 1)
+                v = v ushr 1
+            }
+            return result
+        }
 
         fun sizeFor(minimum: Int): Int {
             var n = 2

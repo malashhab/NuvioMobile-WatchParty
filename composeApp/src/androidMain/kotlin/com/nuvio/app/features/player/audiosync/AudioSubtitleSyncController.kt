@@ -1287,7 +1287,7 @@ internal class AudioSubtitleSyncController(
             cachedWeights?.let { return it }
             return synchronized(this) {
                 cachedWeights ?: context.resources.openRawResource(R.raw.silero_vad_v5_16k).use {
-                    SileroVadWeights.read(it)
+                    SileroVadWeights.read(it.readBytes())
                 }.also { cachedWeights = it }
             }
         }

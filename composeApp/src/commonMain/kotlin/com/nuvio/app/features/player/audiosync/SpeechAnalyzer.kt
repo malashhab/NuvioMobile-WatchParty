@@ -6,6 +6,7 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
+import kotlin.concurrent.Volatile
 
 /**
  * Streaming front-end: mono PCM at any rate -> 16 kHz -> 32 ms chunks aligned to the media
@@ -89,7 +90,7 @@ internal class SpeechAnalyzer(
         outputStep = sampleRate.toDouble() / SileroVad.SAMPLE_RATE
         // Start on the next frame boundary so chunks line up with the timeline grid.
         val frameUs = SpeechTimeline.FRAME_DURATION_US
-        val firstFrame = Math.floorDiv(timeUs + frameUs - 1, frameUs)
+        val firstFrame = (timeUs + frameUs - 1).floorDiv(frameUs)
         nextFrame = firstFrame.toInt()
         val firstOutputTimeUs = firstFrame * frameUs
         nextOutputPosition = (firstOutputTimeUs - timeUs) * sampleRate / 1_000_000.0

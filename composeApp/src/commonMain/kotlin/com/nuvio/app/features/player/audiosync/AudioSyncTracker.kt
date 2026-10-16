@@ -42,7 +42,7 @@ internal class SubtitleSyncModel(val segments: List<SubtitleSyncSegment>) {
     }
 
     override fun toString(): String = segments.joinToString(prefix = "[", postfix = "]") {
-        "from=${it.fromMediaMs}ms scale=${"%.5f".format(it.scale)} shift=${it.shiftMs.roundToLong()}ms"
+        "from=${it.fromMediaMs}ms scale=${(it.scale * 100_000).roundToLong() / 100_000.0} shift=${it.shiftMs.roundToLong()}ms"
     }
 }
 

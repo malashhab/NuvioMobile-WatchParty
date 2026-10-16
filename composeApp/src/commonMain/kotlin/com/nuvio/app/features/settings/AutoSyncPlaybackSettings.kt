@@ -67,8 +67,6 @@ internal fun AutoSyncPlaybackSettingsRows(
     val speechModel by SubtitleSyncStatus.speechModel.collectAsStateWithLifecycle()
     var offerSpeechModel by remember { mutableStateOf(false) }
 
-    if (isIos) return
-
     val preferredLanguageAvailable =
         preferredSubtitleLanguage.isNotBlank() &&
             preferredSubtitleLanguage != SubtitleLanguageOption.NONE &&
@@ -138,6 +136,20 @@ internal fun AutoSyncPlaybackSettingsRows(
             AutoSyncPreferencesRepository.setSyncToleranceMs(next)
         },
     )
+    // iPhone has the audio fallback (its own sampling, no speech model) but no debug logs.
+    if (isIos) {
+        val fallbackEnabled by AudioSyncSettings.fallbackEnabled.collectAsStateWithLifecycle()
+        SettingsGroupDivider(isTablet = isTablet)
+        SettingsSwitchRow(
+            title = stringResource(Res.string.settings_playback_audio_sync_fallback),
+            description = stringResource(Res.string.settings_playback_audio_sync_fallback_description),
+            checked = fallbackEnabled,
+            enabled = enabled && preferredSubtitleAutoSyncOnStart,
+            isTablet = isTablet,
+            onCheckedChange = AudioSyncSettings::setFallbackEnabled,
+        )
+        return
+    }
     SettingsGroupDivider(isTablet = isTablet)
     SettingsSwitchRow(
         title = stringResource(Res.string.settings_playback_auto_sync_debug_logs),

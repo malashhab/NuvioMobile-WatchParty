@@ -25,6 +25,7 @@ import androidx.compose.ui.interop.UIKitViewController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.autosync.rememberIosAutoSyncController
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.delay
@@ -283,8 +284,19 @@ actual fun PlatformPlayerSurface(
         }
     }
 
-    LaunchedEffect(controller, sourceUrl, sourceAudioUrl, sourceHeaders, sourceResponseHeaders) {
-        latestOnControllerReady.value(controller)
+    // Subtitle auto-sync, layered on top like Android does.
+    val autoSyncController = rememberIosAutoSyncController(
+        base = controller,
+        bridge = bridge,
+        sourceUrl = sourceUrl,
+        sourceHeaders = sourceHeaders,
+        externalSubtitles = externalSubtitles,
+        preferredSubtitleLanguage = playerSettings.preferredSubtitleLanguage,
+        secondaryPreferredSubtitleLanguage = playerSettings.secondaryPreferredSubtitleLanguage,
+    )
+
+    LaunchedEffect(autoSyncController, sourceUrl, sourceAudioUrl, sourceHeaders, sourceResponseHeaders) {
+        latestOnControllerReady.value(autoSyncController)
     }
 
     // Load file and set initial state
@@ -465,7 +477,7 @@ private fun encodeExternalSubtitlesForBridge(subtitles: List<com.nuvio.app.featu
     }.getOrNull()
 }
 
-private fun encodePlaybackHeadersForBridge(headers: Map<String, String>): String? {
+internal fun encodePlaybackHeadersForBridge(headers: Map<String, String>): String? {
     val sanitized = sanitizePlaybackHeaders(headers)
     if (sanitized.isEmpty()) {
         return null

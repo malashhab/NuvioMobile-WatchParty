@@ -74,7 +74,7 @@ internal object DialogueSpotPlanner {
         val ends = track.endsMs
         val outerFrom = fromMs - TIMING_SLACK_MS
         val outerTo = toMs + TIMING_SLACK_MS
-        var index = starts.binarySearch(outerFrom).let { if (it < 0) -it - 1 else it }
+        var index = lowerBound(starts, outerFrom)
         while (index > 0 && ends[index - 1] > outerFrom) index--
         var covered = 0.0
         var lines = 0
@@ -107,7 +107,7 @@ internal object DialogueSpotPlanner {
         val toMs = startMs + OPENING_MS + OPENING_SLACK_MS
         val starts = track.startsMs
         val ends = track.endsMs
-        var index = starts.binarySearch(fromMs).let { if (it < 0) -it - 1 else it }
+        var index = lowerBound(starts, fromMs)
         while (index > 0 && ends[index - 1] > fromMs) index--
         var covered = 0.0
         while (index < starts.size && starts[index] < toMs) {
@@ -115,6 +115,17 @@ internal object DialogueSpotPlanner {
             index++
         }
         return (covered / (toMs - fromMs)).coerceAtMost(1.0)
+    }
+
+    /** Index of the first of the sorted [values] that is at least [value]. */
+    private fun lowerBound(values: LongArray, value: Long): Int {
+        var low = 0
+        var high = values.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (values[mid] < value) low = mid + 1 else high = mid
+        }
+        return low
     }
 
     private fun overlap(a: Long, b: Long, from: Long, to: Long): Double =

@@ -19,7 +19,7 @@ private fun List<AddonSubtitle>.toAutoSyncCandidates(): List<AutoSyncSubtitleCan
     }
 
 private fun PlayerScreenRuntime.currentAutoSyncCandidates(): List<AutoSyncSubtitleCandidate> =
-    addonSubtitles.toAutoSyncCandidates()
+    SubtitleReleaseMatching.rank(addonSubtitles, streamReleaseText(), AddonSubtitle::releaseText).toAutoSyncCandidates()
 
 internal fun PlayerScreenRuntime.configureAutoSyncController(
     controller: PlayerEngineController,
@@ -75,9 +75,10 @@ internal fun PlayerScreenRuntime.BindAutoSyncRuntimeEffects() {
         val controller = playerController ?: return@LaunchedEffect
         SubtitleRepository.addonSubtitles.collect { repositorySubtitles ->
             controller.setAutoSyncSubtitleCandidates(
-                mergeStreamAndAddonSubtitles(
-                    repositorySubtitles,
-                    externalSubtitles,
+                SubtitleReleaseMatching.rank(
+                    mergeStreamAndAddonSubtitles(repositorySubtitles, externalSubtitles),
+                    streamReleaseText(),
+                    AddonSubtitle::releaseText,
                 ).toAutoSyncCandidates(),
             )
         }

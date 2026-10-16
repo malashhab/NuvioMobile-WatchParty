@@ -560,18 +560,16 @@ private fun PlaybackSettingsSection(
                     isTablet = isTablet,
                     onClick = { showSecondarySubtitleDialog = true },
                 )
-                if (!isIos) {
-                    SettingsGroupDivider(isTablet = isTablet)
-                    AutoSyncPlaybackSettingsRows( // AutoSync hook
-                        isTablet = isTablet,
-                        enabled = otherSubtitleOptionsEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv,
-                        preferredSubtitleLanguage = preferredSubtitleLanguage,
-                    )
-                    AutoSyncBubbleToastSettingsRow(
-                        isTablet = isTablet,
-                        enabled = otherSubtitleOptionsEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv,
-                    )
-                }
+                // AutoSync hook. On Android it needs ExoPlayer; iPhone has its own (IosAutoSync).
+                val autoSyncEnabled = otherSubtitleOptionsEnabled &&
+                    (isIos || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
+                SettingsGroupDivider(isTablet = isTablet)
+                AutoSyncPlaybackSettingsRows(
+                    isTablet = isTablet,
+                    enabled = autoSyncEnabled,
+                    preferredSubtitleLanguage = preferredSubtitleLanguage,
+                )
+                AutoSyncBubbleToastSettingsRow(isTablet = isTablet, enabled = autoSyncEnabled)
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_subtitle_strip_sdh),

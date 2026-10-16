@@ -65,6 +65,8 @@ interface NuvioPlayerBridge {
     fun clearExternalSubtitle()
     fun clearExternalSubtitleAndSelect(trackId: Int)
     fun setSubtitleDelayMs(delayMs: Int)
+    /** Subtitle speed for subtitles made for another frame rate; 1.0 is normal. */
+    fun setSubtitleSpeed(speed: Double)
     fun applySubtitleStyle(
         textColor: String,
         backgroundColor: String,
@@ -84,6 +86,11 @@ interface NuvioPlayerBridge {
     fun getPlaybackSpeed(): Float
     fun getErrorMessage(): String
     fun getProperty(name: String): String
+    /**
+     * Sync to audio: decodes [durationMs] of the video's audio from [startMs] into a 16 kHz mono
+     * WAV at [outputPath] with a separate hidden mpv. Blocks; never call it on the main thread.
+     */
+    fun extractAudioSpot(url: String, headersJson: String?, startMs: Long, durationMs: Long, outputPath: String): Boolean
     fun destroy()
 }
 

@@ -1,5 +1,9 @@
 package com.nuvio.app.features.player.audiosync
 
+import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+
 /**
  * Speech probability per 32 ms frame on the media timeline (frame n covers [n * 32 ms, (n + 1) * 32 ms)).
  *
@@ -22,24 +26,28 @@ internal class SpeechTimeline {
     var version: Long = 0L
         private set
 
-    @Synchronized
+    private val lock = SynchronizedObject()
+
     fun record(frame: Int, probability: Float) {
         if (frame < 0 || frame >= MAX_FRAMES) return
-        ensureCapacity(frame + 1)
-        val quantized = 1 + (kotlin.math.sqrt(probability.coerceIn(0f, 1f)) * 254f + 0.5f).toInt()
-        val current = values
-        if (current[frame].toInt() == 0) knownFrames++
-        current[frame] = quantized.toByte()
-        if (frame >= knownEnd) knownEnd = frame + 1
-        version++
+        synchronized(lock) {
+            ensureCapacity(frame + 1)
+            val quantized = 1 + (kotlin.math.sqrt(probability.coerceIn(0f, 1f)) * 254f + 0.5f).toInt()
+            val current = values
+            if (current[frame].toInt() == 0) knownFrames++
+            current[frame] = quantized.toByte()
+            if (frame >= knownEnd) knownEnd = frame + 1
+            version++
+        }
     }
 
-    @Synchronized
     fun clear() {
-        values.fill(0)
-        knownFrames = 0
-        knownEnd = 0
-        version++
+        synchronized(lock) {
+            values.fill(0)
+            knownFrames = 0
+            knownEnd = 0
+            version++
+        }
     }
 
     fun knownFrameCount(): Int = knownFrames
@@ -95,11 +103,10 @@ internal class SpeechTimeline {
      * A copy of the raw values for [fromFrame, toFrame), clipped to what was ever recorded. Only
      * the copy happens under the lock; callers scan and convert outside it.
      */
-    @Synchronized
-    private fun copyRange(fromFrame: Int, toFrame: Int): ByteArray {
+    private fun copyRange(fromFrame: Int, toFrame: Int): ByteArray = synchronized(lock) {
         val start = fromFrame.coerceAtLeast(0)
         val end = toFrame.coerceAtMost(minOf(values.size, knownEnd))
-        return if (end <= start) EMPTY else values.copyOfRange(start, end)
+        if (end <= start) EMPTY else values.copyOfRange(start, end)
     }
 
     /**
@@ -178,7 +185,7 @@ internal class SpeechTimeline {
         /** Six hours; anything beyond is ignored. */
         private const val MAX_FRAMES = (6L * 3_600_000_000L / FRAME_DURATION_US).toInt()
 
-        fun frameForTimeUs(timeUs: Long): Int = Math.floorDiv(timeUs, FRAME_DURATION_US).toInt()
+        fun frameForTimeUs(timeUs: Long): Int = timeUs.floorDiv(FRAME_DURATION_US).toInt()
     }
 }
 
