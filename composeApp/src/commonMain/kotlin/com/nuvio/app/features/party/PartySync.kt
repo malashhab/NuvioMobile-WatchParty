@@ -99,4 +99,25 @@ internal object PartySync {
             .filter { it.status == PartyMemberStatus.Loading || it.status == PartyMemberStatus.Buffering }
             .map { it.memberId }
             .filterNot { it in ignored }
+
+    /** Other members with the party's video open: loading, playing, buffering or behind. */
+    fun watchingMemberIds(party: ActiveParty): Set<String> =
+        party.presence.values
+            .filter { it.memberId != party.memberId && it.mediaKey == party.media.key }
+            .filter { it.status != PartyMemberStatus.Browsing }
+            .mapTo(mutableSetOf()) { it.memberId }
+
+    /**
+     * Who left the video since the last check: closed the player, left the app, hit an error or
+     * dropped out of the party. Nobody has left when the party moved to another video (everyone
+     * follows it) or while this device is reconnecting (its view of the others is empty then).
+     */
+    fun membersWhoLeftVideo(
+        previous: Set<String>,
+        previousMediaKey: String?,
+        party: ActiveParty,
+    ): Set<String> {
+        if (!party.connected || previousMediaKey != party.media.key) return emptySet()
+        return previous - watchingMemberIds(party)
+    }
 }

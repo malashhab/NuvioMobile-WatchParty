@@ -71,6 +71,10 @@ object PartyRepository {
     private val _sharedStream = MutableStateFlow<PartyStream?>(null)
     val sharedStream: StateFlow<PartyStream?> = _sharedStream.asStateFlow()
 
+    private val _chat = MutableStateFlow<PartyChat?>(null)
+    /** The current party's chat; null outside a party. */
+    val chat: StateFlow<PartyChat?> = _chat.asStateFlow()
+
     private val _enabled = MutableStateFlow(true)
     val available: StateFlow<Boolean> = combine(ServerConfigurationRepository.active, _enabled) { server, enabled ->
         server.capabilities.watchParty && enabled
@@ -270,6 +274,12 @@ object PartyRepository {
         resumedAt = null
         _playback.value = playback?.takeIf { it.mediaKey == null || it.mediaKey == party.media.key }
         _state.value = PartyUiState(party = party)
+        _chat.value = PartyChat(
+            localMemberId = party.memberId,
+            nameOf = { id -> _state.value.party?.member(id)?.displayName },
+            send = { payload -> session.launch { runCatching { partyChannel.send("chat", payload) } } },
+            nowMs = { clock.nowMs() },
+        )
         session.launch {
             runCatching {
                 partyChannel.open(
@@ -297,6 +307,7 @@ object PartyRepository {
         localPresence = null
         _playback.value = null
         _sharedStream.value = null
+        _chat.value = null
         _state.value = PartyUiState()
     }
 
@@ -359,6 +370,7 @@ object PartyRepository {
                 val playback = payload["playback"]?.takeIf { it !is JsonNull }?.let { decode(it, PartyPlayback.serializer()) }
                 applyMedia(media, playback)
             }
+            "chat" -> _chat.value?.onMessage(payload)
             "stream" -> {
                 if (party.isHost || payload.string("member_id") != party.hostMemberId) return
                 _sharedStream.value = payload["stream"]

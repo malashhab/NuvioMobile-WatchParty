@@ -243,6 +243,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         )
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
         RenderParty(runtime = runtime)
+        RenderPartyChat(runtime = runtime)
     }
 }
 
@@ -319,6 +320,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 null
             },
             partyActive = partyActive,
+            onChatClick = partyChatClickHandler(),
+            chatUnread = partyChatUnreadCount(),
             onTogglePlayback = { togglePlayback() },
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },

@@ -73,4 +73,12 @@
     <string name="party_share_description">Friends can play your link instead of picking their own. It can include your debrid key.</string>
     <string name="party_share_unavailable">This stream can't be shared.</string>
     <string name="party_shared_by">Shared by %1$s</string>
+    <string name="party_left_video">%1$s left the video</string>
+    <string name="party_left_video_paused">%1$s left the video. Paused for everyone.</string>
+    <string name="party_chat">Chat</string>
+    <string name="party_chat_empty">No messages yet. Say hi!</string>
+    <string name="party_chat_placeholder">Message the party</string>
+    <string name="party_chat_send">Send</string>
+    <string name="party_chat_too_fast">Slow down a little, then try again.</string>
+    <string name="party_chat_you">You</string>
 </resources>

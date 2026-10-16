@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.rounded.Build
@@ -103,6 +104,8 @@ internal fun PlayerControlsShell(
     onBack: () -> Unit,
     onPartyClick: (() -> Unit)? = null,
     partyActive: Boolean = false,
+    onChatClick: (() -> Unit)? = null,
+    chatUnread: Int = 0,
     onTogglePlayback: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
@@ -188,6 +191,8 @@ internal fun PlayerControlsShell(
                     onOpenInExternalPlayer = onOpenInExternalPlayer,
                     onPartyClick = onPartyClick,
                     partyActive = partyActive,
+                    onChatClick = onChatClick,
+                    chatUnread = chatUnread,
                     onBack = onBack,
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -207,6 +212,8 @@ internal fun PlayerControlsShell(
                         onBack = onBack,
                         onPartyClick = onPartyClick,
                         partyActive = partyActive,
+                        onChatClick = onChatClick,
+                        chatUnread = chatUnread,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Top))
@@ -347,6 +354,8 @@ private fun PlayerHeader(
     onOpenInExternalPlayer: (() -> Unit)?,
     onPartyClick: (() -> Unit)?,
     partyActive: Boolean,
+    onChatClick: (() -> Unit)?,
+    chatUnread: Int,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -455,6 +464,17 @@ private fun PlayerHeader(
                             iconSize = metrics.headerIconSize,
                             onClick = onOpenInExternalPlayer,
                         )
+                    }
+                    if (onChatClick != null) {
+                        PartyChatBadge(unreadCount = chatUnread) {
+                            PlayerHeaderIconButton(
+                                icon = Icons.AutoMirrored.Rounded.Chat,
+                                contentDescription = stringResource(Res.string.party_chat),
+                                buttonSize = metrics.headerIconSize + 16.dp,
+                                iconSize = metrics.headerIconSize,
+                                onClick = onChatClick,
+                            )
+                        }
                     }
                     if (onPartyClick != null) {
                         PlayerHeaderIconButton(

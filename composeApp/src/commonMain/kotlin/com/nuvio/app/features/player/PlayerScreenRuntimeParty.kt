@@ -73,6 +73,8 @@ import nuvio.composeapp.generated.resources.party_action_speed
 import nuvio.composeapp.generated.resources.party_behind
 import nuvio.composeapp.generated.resources.party_caught_up
 import nuvio.composeapp.generated.resources.party_host_only_note
+import nuvio.composeapp.generated.resources.party_left_video
+import nuvio.composeapp.generated.resources.party_left_video_paused
 import nuvio.composeapp.generated.resources.party_paused_for_you
 import nuvio.composeapp.generated.resources.party_reconnecting
 import nuvio.composeapp.generated.resources.party_waiting
@@ -281,6 +283,10 @@ internal fun PlayerScreenRuntime.BindPartyEffects() {
         var seekLeadMs = 0L
         var measureSeekLead = false
         var wasBehind = false
+        var selfWasInVideo = false
+        var watchingOthers = emptySet<String>()
+        var watchingMediaKey: String? = null
+        val memberNames = mutableMapOf<String, String>()
         while (isActive) {
             delay(PARTY_TICK)
             val party = PartyRepository.state.value.party ?: break
@@ -313,6 +319,26 @@ internal fun PlayerScreenRuntime.BindPartyEffects() {
                 lastStatus = reportedStatus
                 PartyRepository.setLocalStatus(status, partyKey, reportedStatus.third)
             }
+
+            // This fork: anyone leaving the video pauses it for everyone, with a popup.
+            val selfInVideo = party.media.key == partyKey && status != PartyMemberStatus.Browsing
+            if (selfWasInVideo && !selfInVideo && party.media.key == partyKey) {
+                // This device left (app in the background, or an error): pause on the way out.
+                pausePartyForEveryone()
+            }
+            selfWasInVideo = selfInVideo
+            party.members.forEach { memberNames[it.id] = it.displayName }
+            val left = if (selfInVideo) PartySync.membersWhoLeftVideo(watchingOthers, watchingMediaKey, party) else emptySet()
+            if (left.isNotEmpty()) {
+                val wasPlaying = PartyRepository.playback.value?.paused == false
+                pausePartyForEveryone()
+                val names = left.mapNotNull { memberNames[it] }.ifEmpty { listOf("?") }.joinToString()
+                NuvioToastController.show(
+                    getString(if (wasPlaying) Res.string.party_left_video_paused else Res.string.party_left_video, names),
+                )
+            }
+            watchingOthers = if (party.connected) PartySync.watchingMemberIds(party) else emptySet()
+            watchingMediaKey = party.media.key
 
             val controller = playerController
             if (party.media.key != partyKey || controller == null || errorMessage != null || partyAppInBackground) {
@@ -435,16 +461,23 @@ internal fun PlayerScreenRuntime.BindPartyEffects() {
     DisposableEffect(Unit) {
         onDispose {
             val party = PartyRepository.state.value.party ?: return@onDispose
-            val playback = PartyRepository.playback.value
-            val othersWatching = party.presence.values.any {
-                it.memberId != party.memberId && it.mediaKey == party.media.key && it.status != PartyMemberStatus.Browsing
-            }
-            if (party.media.key == partyKey && playback != null && !playback.paused && !othersWatching) {
-                PartyRepository.publishPlayback(paused = true, positionMs = playbackSnapshot.positionMs, rate = playback.rate)
-            }
+            // This fork pauses for everyone when anyone leaves (Nuvio only did when nobody else watched).
+            if (party.media.key == partyKey) pausePartyForEveryone()
             PartyRepository.setLocalStatus(PartyMemberStatus.Browsing, null)
         }
     }
+}
+
+/** Pauses the party where it is, if it's playing and this device may control it. */
+private fun PlayerScreenRuntime.pausePartyForEveryone() {
+    val party = PartyRepository.state.value.party ?: return
+    val playback = PartyRepository.playback.value ?: return
+    if (playback.paused || !party.canControl) return
+    PartyRepository.publishPlayback(
+        paused = true,
+        positionMs = PartySync.expectedPositionMs(playback, PartyRepository.nowMs(), playbackSnapshot.durationMs),
+        rate = playback.rate,
+    )
 }
 
 private fun PlayerScreenRuntime.clearPartyNudge(playback: PartyPlayback? = PartyRepository.playback.value) {

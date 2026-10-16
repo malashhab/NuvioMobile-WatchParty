@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -63,9 +64,20 @@ internal fun PlayerToolbar(
     modifier: Modifier = Modifier,
     onPartyClick: (() -> Unit)? = null,
     partyActive: Boolean = false,
+    onChatClick: (() -> Unit)? = null,
+    chatUnread: Int = 0,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
+        if (onChatClick != null) {
+            PartyChatBadge(unreadCount = chatUnread) {
+                PlayerAction(
+                    description = stringResource(Res.string.party_chat),
+                    icon = Icons.AutoMirrored.Rounded.Chat,
+                    onClick = onChatClick,
+                )
+            }
+        }
         if (onPartyClick != null) {
             PlayerAction(
                 description = stringResource(Res.string.party_title),
