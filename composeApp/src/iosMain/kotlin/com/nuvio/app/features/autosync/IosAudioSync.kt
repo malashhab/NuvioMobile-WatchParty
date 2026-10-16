@@ -51,6 +51,7 @@ internal object IosAudioSync {
         }
     }
 
+    @OptIn(ExperimentalForeignApi::class)
     suspend fun run(
         bridge: NuvioPlayerBridge,
         sourceUrl: String,
